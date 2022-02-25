@@ -377,8 +377,35 @@ ax[0,1].set_title('Rate')
 
 # **Visualise**
 
-vis.set_object(g.Box([0.2, 0.2, 0.2]))
+# + jupyter={"source_hidden": true} tags=[]
+def create_quadcopter(vis):
+    arm_length = 0.25
+    rotor_radius = 0.125
+
+    # Arms
+    vis['drone']['left_arm'].set_object(g.Box([2*arm_length, 0.05, 0.05]))
+    vis['drone']['left_arm'].set_transform(tf.rotation_matrix(np.deg2rad(45), [0,0,1]))
+    vis['drone']['right_arm'].set_object(g.Box([2*arm_length, 0.05, 0.05]))
+    vis['drone']['right_arm'].set_transform(tf.rotation_matrix(np.deg2rad(-45), [0,0,1]))
+
+    # Rotors
+    for i in range(1,5):
+        theta = np.deg2rad(45 + 90*i)
+        offset = np.array([arm_length * np.sin(theta), arm_length * np.cos(theta), 0.05])
+
+        # Compute transformation
+        T = tf.rotation_matrix(np.deg2rad(90), [1,0,0])
+        T[0:3,3] = offset
+
+        vis['drone'][f'rotor{i}'].set_object(g.Cylinder(0.01, rotor_radius))
+        vis['drone'][f'rotor{i}'].set_transform(T)
+        
+    return vis['drone']
+
+vis.delete()
+drone = create_quadcopter(vis)
 vis.jupyter_cell()
+# -
 
 for i in range(ref.shape[1]):
     # Convert NED to ENU
