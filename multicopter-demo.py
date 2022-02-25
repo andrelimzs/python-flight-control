@@ -264,7 +264,7 @@ def state_feedback(ref,x):
         print(f'acc_des_b: {acc_des_b.T}')
     
     phi_des   = np.arcsin(acc_des_b[1,:] / T_des)
-    theta_des = np.arctan2(acc_des_b[0,:], -acc_des_b[2,:]).reshape((1,-1))
+    theta_des = -np.arctan2(acc_des_b[0,:], -acc_des_b[2,:]).reshape((1,-1))
     psi_des   = np.zeros(phi_des.shape)
     
     # Form att desired vector
