@@ -147,10 +147,6 @@ def eqn_of_motion(t, y, control_law, ref_function):
     
     # Velocity
     d_vel = apply_rot(eRb, thrust) / mass
-    # d_vel = R.from_euler('zyx', np.squeeze(att.T)).apply(np.squeeze(thrust.T), inverse=True) / mass
-    # d_vel = d_vel.T.reshape((3,-1))
-    
-    # print(f'{att.T} -> {d_vel.T}')
     
     # Gravity
     d_vel[2] += 9.81
@@ -166,7 +162,7 @@ def eqn_of_motion(t, y, control_law, ref_function):
     return np.squeeze(dydt)
 
 
-# + tags=[] jupyter={"source_hidden": true}
+# + tags=[]
 # Compute state feedback
 z3 = np.zeros((3,3))
 I3 = np.eye(3)
@@ -309,22 +305,22 @@ def ref_function(t):
     else:
         N = t.shape[0]
     
-    step = -2 * (t > 0).astype(int).reshape((1,-1))
-    sin4 = 0.5 * np.sin(4*t).reshape((1,-1))
-    sin2 = 0.5 * np.sin(2*t).reshape((1,-1))
+    step = -1 * (t > 0).astype(int).reshape((1,-1))
+    sin1 = 4 * np.sin(1*t).reshape((1,-1))
+    sin2 = 4 * np.sin(2*t).reshape((1,-1))
     zero = np.zeros((1,N))
     nan  = np.nan * zero.copy()
     
-    ref_pos  = np.concatenate( [nan, nan, step] )
+    ref_pos  = np.concatenate( [sin1, sin2, step] )
     ref_vel  = np.concatenate( [nan, nan, nan] )
-    ref_att  = np.concatenate( [sin4, sin2, zero] )
+    ref_att  = np.concatenate( [nan, nan, zero] )
     ref_rate = np.concatenate( [nan, nan, nan] )
     
     return np.concatenate( [ref_pos, ref_vel, ref_att, ref_rate] )
 
 # Run Simulation
 Ts = 0.01
-t_span = [0,10]
+t_span = [0,20]
 t_eval = np.arange(t_span[0], t_span[1], Ts)
 y0 = np.zeros(12)
 sol = solve_ivp(eqn_of_motion, t_span, y0, t_eval=t_eval,
@@ -351,26 +347,32 @@ LMN = control_u[1:4,:]
 
 # +
 # %matplotlib inline
-fig,ax = plt.subplots(3, sharex=True, sharey=True)
-for i in range(3):
-    ax[i].plot(t, pos[i])
-    ax[i].plot(t, ref_pos[i])
+plt.rcParams["figure.figsize"] = (20,5)
 
-fig,ax = plt.subplots(3, sharex=True, sharey=True)
+fig,ax = plt.subplots(3,2, sharex=True)
 for i in range(3):
-    ax[i].plot(t, vel[i])
-    ax[i].plot(t, ref_vel[i])
-
-fig,ax = plt.subplots(3, sharex=True, sharey=True)
-for i in range(3):
-    ax[i].plot(t, np.rad2deg(att[i]))
-    ax[i].plot(t, np.rad2deg(ref_att[i]))
+    ax[i,0].plot(t, pos[i])
+    ax[i,0].plot(t, ref_pos[i])
     
-fig,ax = plt.subplots(3, sharex=True, sharey=True)
+    ax[i,1].plot(t, vel[i])
+    ax[i,1].plot(t, ref_vel[i])
+
+[ ax[i,j].grid() for i in range(3) for j in range(2) ]
+ax[0,0].set_title('Pos')
+ax[0,1].set_title('Vel')
+        
+fig,ax = plt.subplots(3,2, sharex=True)
 for i in range(3):
-    ax[i].plot(t, np.rad2deg(rate[i]))
-    ax[i].plot(t, np.rad2deg(ref_rate[i]))
-    # ax[i].plot(time, LMN[i])
+    ax[i,0].plot(t, np.rad2deg(att[i]))
+    ax[i,0].plot(t, np.rad2deg(ref_att[i]))
+    
+    ax[i,1].plot(t, np.rad2deg(rate[i]))
+    ax[i,1].plot(t, np.rad2deg(ref_rate[i]))
+    # ax[i,3].plot(time, LMN[i])
+    
+[ ax[i,j].grid() for i in range(3) for j in range(2) ]
+ax[0,0].set_title('Att')
+ax[0,1].set_title('Rate')
 # -
 
 # **Visualise**
