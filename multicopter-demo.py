@@ -111,6 +111,8 @@ def add_trailing_dim(x):
 def eqn_of_motion(t, y, control_law, ref_function):
     mass = 1
     J_inv = np.array([1/0.01, 1/0.01, 1/0.02]).reshape(3,1)
+    T_max = 30
+    LMN_max = 1
     
     # Unpack state
     y = add_trailing_dim(y)
@@ -127,11 +129,15 @@ def eqn_of_motion(t, y, control_law, ref_function):
     
     # ================  Actuator Model  =================
     T = control_u[0,:].reshape(1,-1)
-    thrust = np.concatenate([np.zeros(T.shape), np.zeros(T.shape), -T])
     LMN    = control_u[1:4,:].reshape(3,-1)
     
+    T = np.clip(T, 0, T_max)
+    LMN = np.clip(LMN, -LMN_max, LMN_max)
+    
+    thrust = np.concatenate([np.zeros(T.shape), np.zeros(T.shape), -T])
+    
     # ===================  Calculate  ===================
-    #
+    # pass
     
     # ==============  Compute derivatives  ==============
     # State is { pos, vel, att, rate }
