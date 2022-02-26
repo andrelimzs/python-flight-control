@@ -66,33 +66,29 @@ def eul2rotm(eul):
                    [ -s[1],               c[1]*s[0],                  c[1]*c[0]      ] ])
     return M
 
-def apply_rot(rot_matrix, vec):
-    """
-    Apply a sequence of rotation matrices (Nx3x3)
-    to either:
-    - a vector (3,)
-    - a sequence of vector (3,N)
-    """
+def apply(M, vec) -> np.ndarray:
+    """ Apply a sequence of linear transformations (Nx3x3)
+    to either a vector (3,) or a sequence of vectors (3,N) """
     # Check for the single Rot matrix case (3,3) and return instantly
-    if rot_matrix.ndim < 3:
-        return rot_matrix @ vec
+    if M.ndim < 3:
+        return M @ vec
     
     # Apply N rotations to a single vector
     if vec.ndim == 1:
-        for R in rot_matrix:
+        for R in M:
             return R @ vec
         
     # Apply N rotations to N vectors
-    elif rot_matrix.shape[0] == vec.shape[1]:
-        N = rot_matrix.shape[0]
+    elif M.shape[0] == vec.shape[1]:
+        N = M.shape[0]
         output = np.zeros((3,N))
-        for i,R in enumerate(rot_matrix):
+        for i,R in enumerate(M):
             output[:,i] = R @ vec[:,i]
         return output
     
     # N rotations cannot be applied to M vectors
     else:
-        raise ValueError("apply_rot : Different number of rotation matrices and vectors received")
+        raise ValueError("Cannot apply different number of transformations and vectors")
 
 def skew(vec):
     """ Form the skew-symmetric matrix
@@ -179,7 +175,8 @@ def eqn_of_motion(t, y, control_law, ref_function):
     thrust = np.concatenate([0*T, 0*T, -T])
     
     # ===================  Calculate  ===================
-    # pass
+    # Convert body-axis rates pqr to euler derivative
+    eul_dot = apply(body_rate_to_euler_dot(att), rate)
     
     # ==============  Compute derivatives  ==============
     # State is { pos, vel, att, rate }
@@ -188,7 +185,7 @@ def eqn_of_motion(t, y, control_law, ref_function):
     d_pos = vel
     
     # Velocity
-    d_vel = apply_rot(eRb, thrust) / mass
+    d_vel = apply(eRb, thrust) / mass
     
     # Gravity
     d_vel[2] += 9.81
@@ -306,7 +303,7 @@ def state_feedback(ref,x):
     
     # Convert acceleration into orientation + thrust
     # Transform pos/vel from NED frame to body frame 
-    acc_des_b = apply_rot( rotz(-att[2]), acc_des )
+    acc_des_b = apply( rotz(-att[2]), acc_des )
     
     # Compute desired roll/pitch from desired acceleration
     T_des = np.atleast_1d(LA.norm(acc_des_b, axis=0)) * mass
