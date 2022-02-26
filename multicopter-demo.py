@@ -111,6 +111,31 @@ def stack_squeeze(arr):
 # 3. Define control law
 
 # + tags=[]
+def body_rate_to_euler_dot(eul):
+    """ Compute the transformation to go from body rates pqr to euler derivative
+    for either a vector (3,) -> (3,3) or a sequence of vectors (3,N) -> (N,3,3) """
+    # Align eul to (3,N)
+    if eul.shape[0] != 3:
+        eul = eul.T
+    
+    # Get length N
+    N = eul.shape[1] if eul.ndim > 1 else 1
+    
+    # Precompute the sin and cos terms
+    one = np.ones_like(eul[0]).reshape(-1,1,1)
+    zero = np.zeros_like(eul[0]).reshape(-1,1,1)
+    s2 = np.sin(eul[2]).reshape(-1,1,1)
+    c2 = np.cos(eul[2]).reshape(-1,1,1)
+    t1 = np.tan(eul[1]).reshape(-1,1,1)
+    sec1 = 1 / np.cos(eul[1]).reshape(-1,1,1)
+    
+    # Form rotation matrix (N,3,3)
+    M = np.block([ [one,  s2*t1,   c2*t1],
+                   [zero,   c2,     -s2],
+                   [zero, s2*sec1, c2*sec1]
+                 ])
+    return M
+
 # Define Multicopter Physics
 def eqn_of_motion(t, y, control_law, ref_function):
     mass = 1
