@@ -29,23 +29,12 @@ import meshcat.transformations as tf
 # Create a new visualizer
 vis = meshcat.Visualizer()
 
+
 # +
-from scipy.spatial.transform import Rotation as R
-
-def rotx(a):
-    """Rotation matrix about x"""
-    return R.from_euler('x', -a).as_matrix()
-
-def roty(a):
-    """Rotation matrix about y"""
-    return R.from_euler('y', -a).as_matrix()
-
-def rotz(a):
-    """Rotation matrix about z"""
-    return R.from_euler('z', -a).as_matrix()
-
-def eul2rotm(eul):
-    """Rotation matrix from euler angles"""
+def eul2rotm(eul) -> np.ndarray:
+    """ Rotation matrix from euler angles
+    If input is (3,) return (3,3)
+    If input is (3,N) return (N,3,3) """
     # Align eul to (3,N)
     if eul.shape[0] != 3:
         eul = eul.T
@@ -106,7 +95,7 @@ def atan2(Y, X) -> np.ndarray:
     """Numpy's arctan2, but output is at least 1D array"""
     return np.atleast_1d(np.arctan2(Y,X))
 
-def stack_squeeze(arr):
+def stack_squeeze(arr) -> np.ndarray:
     """Stack along axis 0, then squeeze to remove any trailing dimensions of size 1"""
     return np.squeeze(np.stack( arr ))
 
@@ -147,7 +136,8 @@ def body_rate_to_euler_dot(eul):
 # Define Multicopter Physics
 def eqn_of_motion(t, y, control_law, ref_function):
     mass = 1
-    J_inv = np.array([1/0.01, 1/0.01, 1/0.02])
+    J     = np.array([0.01, 0.01, 0.02])
+    J_inv = 1 / J
     T_max = 30
     LMN_max = 1
     
