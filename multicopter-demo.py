@@ -94,6 +94,18 @@ def apply_rot(rot_matrix, vec):
     else:
         raise ValueError("apply_rot : Different number of rotation matrices and vectors received")
 
+def skew(vec):
+    """ Form the skew-symmetric matrix
+    to either a vector (3,) -> (3,3) or a sequence of vectors (3,N) -> (N,3,3) """
+    a1 = vec[0].reshape(-1,1,1)
+    a2 = vec[1].reshape(-1,1,1)
+    a3 = vec[2].reshape(-1,1,1)
+    zero = np.zeros_like(a1)
+    M = np.block( [[zero, -a3,    a2],
+                   [ a3,  zero,  -a1],
+                   [-a2,   a2,   zero]] )
+    return M
+    
 def atan2(Y, X) -> np.ndarray:
     """Numpy's arctan2, but output is at least 1D array"""
     return np.atleast_1d(np.arctan2(Y,X))
