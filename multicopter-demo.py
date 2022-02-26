@@ -181,10 +181,11 @@ def eqn_of_motion(t, y, control_law, ref_function):
     d_vel[2] += 9.81
     
     # Attitude
-    d_att = rate
+    d_att = eul_dot
     
     # Angular Rate
-    d_rate = J_inv * LMN
+    euler_cross_product = apply(skew(rate) @ J, rate)
+    d_rate = J_inv * (LMN - euler_cross_product)
     
     #[DEBUG] print(f'd_pos: {d_pos.shape} \t d_vel: {d_vel.shape}')
     #[DEBUG] print(f'd_att: {d_att.shape} \t d_rate: {d_rate.shape}')
