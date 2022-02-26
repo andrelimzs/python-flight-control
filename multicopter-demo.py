@@ -305,11 +305,17 @@ def ref_function(t):
     else:
         N = t.shape[0]
     
-    step = -1 * (t > 0).astype(int).reshape((1,-1))
-    sin1 = 4 * np.sin(1*t).reshape((1,-1))
-    sin2 = 4 * np.sin(2*t).reshape((1,-1))
+    
     zero = np.zeros((1,N))
     nan  = np.nan * zero.copy()
+    step = -1 * (t > 0).astype(int).reshape((1,-1))
+    
+    sin1 = 4 * np.sin(1*t).reshape((1,-1))
+    sin2 = 4 * np.sin(2*t).reshape((1,-1))
+    sin3 = 1 * np.sin(0.5*t).reshape((1,-1)) - 2
+    
+    square1 = 4 * (np.sin(1*t) > 0).astype(int).reshape((1,-1))
+    square2 = 4 * (np.sin(1*t) < 0).astype(int).reshape((1,-1))
     
     ref_pos  = np.concatenate( [sin1, sin2, step] )
     ref_vel  = np.concatenate( [nan, nan, nan] )
@@ -373,6 +379,8 @@ for i in range(3):
 [ ax[i,j].grid() for i in range(3) for j in range(2) ]
 ax[0,0].set_title('Att')
 ax[0,1].set_title('Rate')
+
+
 # -
 
 # **Visualise**
@@ -418,8 +426,6 @@ for i in range(ref.shape[1]):
     
     # Apply
     vis.set_transform(T)
-    time.sleep(0.005)
+    time.sleep(0.001)
 
-r = eul2rotm(np.array([2.20541314e-01, -1.29234325e-30, -5.88810570e-32]))
-r.T @ np.array([0,0,2])
-np.rad2deg(2.2e-1)
+
