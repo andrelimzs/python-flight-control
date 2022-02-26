@@ -44,26 +44,21 @@ def rotz(a):
     """Rotation matrix about z"""
     return R.from_euler('z', -a).as_matrix()
 
-# def eul2rotm(eul):
-#     """Rotation matrix from euler angles"""
-#     return R.from_euler('zyx', -eul.T).as_matrix()
-
 def eul2rotm(eul):
     """Rotation matrix from euler angles"""
-    eul = add_trailing_dim(eul)
-    
     # Align eul to (3,N)
     if eul.shape[0] != 3:
-        eul = eul.copy().T
+        eul = eul.T
     
-    N = eul.shape[1]
+    # Get length N
+    N = eul.shape[1] if eul.ndim > 1 else 1
     
     # Precompute the sin and cos terms
     s = []
     c = []
     for i in range(3):
-        s.append( np.sin(eul[i,:]).reshape(-1,1,1) )
-        c.append( np.cos(eul[i,:]).reshape(-1,1,1) )
+        s.append( np.sin(eul[i]).reshape(-1,1,1) )
+        c.append( np.cos(eul[i]).reshape(-1,1,1) )
     
     # Form rotation matrix (N,3,3)
     M = np.block([ [c[2]*c[1], c[2]*s[1]*s[0] - s[2]*c[0], c[2]*s[1]*c[0] + s[2]*s[0]],
@@ -78,25 +73,34 @@ def apply_rot(rot_matrix, vec):
     - a vector (3,)
     - a sequence of vector (3,N)
     """
-    # Check for the single R case (3,3) instead of (Nx3x3)
+    # Check for the single Rot matrix case (3,3) and return instantly
     if rot_matrix.ndim < 3:
         return rot_matrix @ vec
     
-    output = []
-    # Apply R to a single vector or N vectors
+    # Apply N rotations to a single vector
     if vec.ndim == 1:
         for R in rot_matrix:
-            output.append(R @ vec)
-    else:
+            return R @ vec
+        
+    # Apply N rotations to N vectors
+    elif rot_matrix.shape[0] == vec.shape[1]:
+        N = rot_matrix.shape[0]
+        output = np.zeros((3,N))
         for i,R in enumerate(rot_matrix):
-            output.append(R @ vec[:,i])
+            output[:,i] = R @ vec[:,i]
+        return output
     
-    return np.stack(output, axis=1)
+    # N rotations cannot be applied to M vectors
+    else:
+        raise ValueError("apply_rot : Different number of rotation matrices and vectors received")
 
-def add_trailing_dim(x):
-    if x.ndim <= 1:
-        x = x.reshape((-1,1))
-    return x
+def atan2(Y, X) -> np.ndarray:
+    """Numpy's arctan2, but output is at least 1D array"""
+    return np.atleast_1d(np.arctan2(Y,X))
+
+def stack_squeeze(arr):
+    """Stack along axis 0, then squeeze to remove any trailing dimensions of size 1"""
+    return np.squeeze(np.stack( arr ))
 
 
 # -
@@ -110,16 +114,15 @@ def add_trailing_dim(x):
 # Define Multicopter Physics
 def eqn_of_motion(t, y, control_law, ref_function):
     mass = 1
-    J_inv = np.array([1/0.01, 1/0.01, 1/0.02]).reshape(3,1)
+    J_inv = np.array([1/0.01, 1/0.01, 1/0.02])
     T_max = 30
     LMN_max = 1
     
     # Unpack state
-    y = add_trailing_dim(y)
-    pos = y[0:3,:]
-    vel = y[3:6,:]
-    att = y[6:9,:]
-    rate = y[9:12,:]
+    pos = y[0:3]
+    vel = y[3:6]
+    att = y[6:9]
+    rate = y[9:12]
     
     eRb = eul2rotm(att)
     
@@ -128,13 +131,15 @@ def eqn_of_motion(t, y, control_law, ref_function):
     control_u = control_law(ref, y)
     
     # ================  Actuator Model  =================
-    T = control_u[0,:].reshape(1,-1)
-    LMN    = control_u[1:4,:].reshape(3,-1)
+    T = np.atleast_1d(control_u[0])
+    LMN = control_u[1:4]
     
     T = np.clip(T, 0, T_max)
     LMN = np.clip(LMN, -LMN_max, LMN_max)
     
-    thrust = np.concatenate([np.zeros(T.shape), np.zeros(T.shape), -T])
+    #[DEBUG] print(f'T: {T.shape}')
+    
+    thrust = np.concatenate([0*T, 0*T, -T])
     
     # ===================  Calculate  ===================
     # pass
@@ -157,9 +162,12 @@ def eqn_of_motion(t, y, control_law, ref_function):
     # Angular Rate
     d_rate = J_inv * LMN
     
+    #[DEBUG] print(f'd_pos: {d_pos.shape} \t d_vel: {d_vel.shape}')
+    #[DEBUG] print(f'd_att: {d_att.shape} \t d_rate: {d_rate.shape}')
+    
     dydt = np.concatenate([d_pos, d_vel, d_att, d_rate], axis=0)
     
-    return np.squeeze(dydt)
+    return dydt
 
 
 # + tags=[]
@@ -191,31 +199,35 @@ def state_feedback(ref,x):
     - Position and Velocity are in NED
     """
     # Convert x to np.ndarray if necessary
-    if type(x) is not np.ndarray: x = np.array(x)
-    # Add trailing dimension
-    x = add_trailing_dim(x)
-    ref = add_trailing_dim(ref.copy())
+    # if type(x) is not np.ndarray: x = np.array(x)
+    ref = ref.copy()
+    
+    #[DEBUG] print(f'x: {x.shape} \t ref: {ref.shape}')
     
     # Physical parameters
     mass = 1
-    MOI = np.array([0.01, 0.01, 0.02]).reshape((3,1))
+    MOI = np.diag([0.01, 0.01, 0.02])
     
     # Unpack state
-    pos  = x[0:3,:]
-    vel  = x[3:6,:]
-    att  = x[6:9,:]
-    rate = x[9:12,:]
+    pos  = x[0:3]
+    vel  = x[3:6]
+    att  = x[6:9]
+    rate = x[9:12]
     
     # Unpack reference
-    ref_pos  = ref[0:3,:]
-    ref_vel  = ref[3:6,:]
-    ref_att  = ref[6:9,:]
-    ref_rate = ref[9:12,:]
+    ref_pos  = ref[0:3]
+    ref_vel  = ref[3:6]
+    ref_att  = ref[6:9]
+    ref_rate = ref[9:12]
     
     # Disable control loop if reference command all outer-loop commands are nan
     disable_pos = np.isnan(ref_pos)
     disable_vel = np.isnan(ref_vel) & disable_pos
     disable_att = np.isnan(ref_att) & disable_vel
+    
+    #[DEBUG] print(f'disable_pos: {disable_pos.shape} \t disable_vel: {disable_vel.shape} \t disable_att: {disable_att.shape}')
+    #[DEBUG] print(f'ref_pos: {ref_pos.shape} \t pos: {pos.shape}')
+    
     ref_pos[disable_pos] = pos[disable_pos]
     ref_vel[disable_vel] = vel[disable_vel]
     ref_att[disable_att] = att[disable_att]
@@ -248,47 +260,57 @@ def state_feedback(ref,x):
     acc_des = K_pos @ np.concatenate([pos_err, vel_err])
     
     # Add gravity
-    acc_des[2,:] -= 9.81
-    # Clip acc_des
-    acc_des[2,:] = np.clip(acc_des[2,:], -20, -5)
+    acc_des[2] -= 9.81
+    
+    acc_des[2] = np.clip(acc_des[2], -20, -5)
+    
+    # # Saturate a_des while preserving direction
+    # z_des_violation = acc_des[2,:] - np.clip(acc_des[2,:], -20, -5)   
     
     # Convert acceleration into orientation + thrust
     # Transform pos/vel from NED frame to body frame 
-    acc_des_b = apply_rot( rotz(-att[2,:]), acc_des )
+    acc_des_b = apply_rot( rotz(-att[2]), acc_des )
     
     # Compute desired roll/pitch from desired acceleration
-    T_des = LA.norm(acc_des_b, axis=0).reshape(1,-1) * mass
+    T_des = np.atleast_1d(LA.norm(acc_des_b, axis=0)) * mass
     # T_des = -acc_des_b[2,:].reshape(1,-1) * mass
     
-    if np.isnan(T_des).any():
-        print(f'att: {att.T}')
-        print(f'acc_des: {acc_des.T}')
-        print(f'acc_des_b: {acc_des_b.T}')
+    # Enforce T_des shape to either (1,) or (1,N)
+    if T_des.shape[0] > 1:
+        T_des = T_des.reshape((1,-1))
+
+    phi_des   =  np.arcsin(acc_des_b[1] / T_des)
+    theta_des = -atan2(acc_des_b[0], -acc_des_b[2])
+    psi_des   =  np.zeros(phi_des.shape)
     
-    phi_des   = np.arcsin(acc_des_b[1,:] / T_des)
-    theta_des = -np.arctan2(acc_des_b[0,:], -acc_des_b[2,:]).reshape((1,-1))
-    psi_des   = np.zeros(phi_des.shape)
+    if theta_des.shape[0] > 1:
+        theta_des = theta_des.reshape((1,-1)) 
+    
+    #[DEBUG] print(f'acc_des_b: {acc_des_b.shape}')
+    #[DEBUG] print(f'phi_des: {phi_des.shape} \t theta_des: {theta_des.shape} \t psi_des: {psi_des.shape}')
     
     # Form att desired vector
-    att_des = np.concatenate([phi_des, theta_des, psi_des], axis=0)
-    att_des = add_trailing_dim(att_des)
+    att_des = stack_squeeze([phi_des, theta_des, psi_des])
     
     if np.isnan(att_des).any():
-        print(acc_des_b[1,:] / T_des)
+        print(acc_des_b[1] / T_des)
         raise ValueError(f'att_des {att_des} is nan')
+        
+    #[DEBUG] print(f'ref_att: {ref_att.shape} \t att_des: {att_des.shape} \t att: {att.shape}')
     
     # Attitude Subsystem
     att_err  = ref_att + att_des - att 
     rate_err = ref_rate - rate
+    
+    #[DEBUG] print(f'att_err: {att_err.shape} \t rate_err: {rate_err.shape}')
+        
     ang_acc_des  = K_att @ np.concatenate([att_err, rate_err])
-    LMN_des = MOI * ang_acc_des
+    LMN_des = MOI @ ang_acc_des
+    
+    #[DEBUG] print(f'MOI: {MOI.shape} \t ang_acc_des: {ang_acc_des.shape}')
+    #[DEBUG] print(f'T_des: {T_des.shape} \t LMN_des: {LMN_des.shape}')
     
     control_u = np.concatenate([T_des, LMN_des])
-    
-    if np.isnan(control_u).any():
-        print(ref_att.T, att_des.T, att.T)
-        print(att_err.T, rate_err.T)
-        raise ValueError('control_u is nan')
     
     return control_u
 
@@ -296,31 +318,24 @@ def state_feedback(ref,x):
 # +
 # Generate trajectories
 def ref_function(t):
-    if type(t) is not np.ndarray:
-        t = np.array(t).reshape(1,1)
+    t = np.atleast_1d(t)
+    N = t.shape[0]
     
-    # Get length N
-    if t.ndim == 0:
-        N = 1
-    else:
-        N = t.shape[0]
+    zero = 0 * t
+    nan  = np.nan * t
+    step = -1 * (t > 0).astype(int)
     
+    sin1 = 4 * np.sin(1*t)
+    sin2 = 4 * np.sin(2*t)
+    sin3 = 1 * np.sin(0.5*t) - 2
     
-    zero = np.zeros((1,N))
-    nan  = np.nan * zero.copy()
-    step = -1 * (t > 0).astype(int).reshape((1,-1))
+    square1 = 4 * (np.sin(1*t) > 0).astype(int)
+    square2 = 4 * (np.sin(1*t) < 0).astype(int)
     
-    sin1 = 4 * np.sin(1*t).reshape((1,-1))
-    sin2 = 4 * np.sin(2*t).reshape((1,-1))
-    sin3 = 1 * np.sin(0.5*t).reshape((1,-1)) - 2
-    
-    square1 = 4 * (np.sin(1*t) > 0).astype(int).reshape((1,-1))
-    square2 = 4 * (np.sin(1*t) < 0).astype(int).reshape((1,-1))
-    
-    ref_pos  = np.concatenate( [sin1, sin2, step] )
-    ref_vel  = np.concatenate( [nan, nan, nan] )
-    ref_att  = np.concatenate( [nan, nan, zero] )
-    ref_rate = np.concatenate( [nan, nan, nan] )
+    ref_pos  = stack_squeeze( [sin1, sin2, step] )
+    ref_vel  = stack_squeeze( [nan, nan, nan] )
+    ref_att  = stack_squeeze( [nan, nan, zero] )
+    ref_rate = stack_squeeze( [nan, nan, nan] )
     
     return np.concatenate( [ref_pos, ref_vel, ref_att, ref_rate] )
 
@@ -334,22 +349,22 @@ sol = solve_ivp(eqn_of_motion, t_span, y0, t_eval=t_eval,
 
 # Unpack solution
 t = sol.t
-pos  = sol.y[0:3,:]
-vel  = sol.y[3:6,:]
-att  = sol.y[6:9,:]
-rate = sol.y[9:12,:]
+pos  = sol.y[0:3]
+vel  = sol.y[3:6]
+att  = sol.y[6:9]
+rate = sol.y[9:12]
 
 # Reference
 ref  = ref_function(sol.t)
-ref_pos  = ref[0:3,:]
-ref_vel  = ref[3:6,:]
-ref_att  = ref[6:9,:]
-ref_rate = ref[9:12,:]
+ref_pos  = ref[0:3]
+ref_vel  = ref[3:6]
+ref_att  = ref[6:9]
+ref_rate = ref[9:12]
 
 # Control input
 control_u = state_feedback(ref, sol.y)
-T   = control_u[0,:]
-LMN = control_u[1:4,:]
+T   = control_u[0]
+LMN = control_u[1:4]
 
 # +
 # %matplotlib inline
@@ -385,7 +400,7 @@ ax[0,1].set_title('Rate')
 
 # **Visualise**
 
-# + jupyter={"source_hidden": true} tags=[]
+# + tags=[]
 def create_quadcopter(vis):
     arm_length = 0.25
     rotor_radius = 0.125
