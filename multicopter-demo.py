@@ -692,20 +692,25 @@ T = tf.rotation_matrix(np.deg2rad(45), [0,0,1])
 T[0:3,3] = [3,3,2]
 vis['/Cameras'].set_transform(T)
 
-vis.jupyter_cell()
+anim = meshcat.animation.Animation()
+
+for i in range(0,ref.shape[1],3):   
+    with anim.at_frame(vis, i) as frame:
+        # Convert NED to ENU
+        pos_enu = np.array([1,-1,-1]) * pos[:,i]
+        att_enu = np.array([1,-1,-1]) * eul[:,i]
+
+        # Form homogeneous transformation
+        T = tf.euler_matrix(*att_enu)
+        T[0:3,3] = pos_enu
+
+        # Apply
+        frame.set_transform(T)
+
+vis.set_animation(anim)
+vis.render_static()
 # -
 
-for i in range(ref.shape[1]):
-    # Convert NED to ENU
-    pos_enu = np.array([1,-1,-1]) * pos[:,i]
-    att_enu = np.array([1,-1,-1]) * eul[:,i]
-    
-    # Form homogeneous transformation
-    T = tf.euler_matrix(*att_enu)
-    T[0:3,3] = pos_enu
-    
-    # Apply
-    vis.set_transform(T)
-    time.sleep(0.001)
+
 
 
