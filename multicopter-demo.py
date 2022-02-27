@@ -124,7 +124,7 @@ def stack_squeeze(arr) -> np.ndarray:
 # +
 class Translation:
     num_states = 6
-    def __call__(self, params, T, LMN, x, np=np):
+    def __call__(self, params, T, LMN, x):
         # Form thrust vector (in body frame)
         thrust = np.concatenate([0*T, 0*T, -T])
 
@@ -139,7 +139,7 @@ class Translation:
 
 class EulerRotation:
     num_states = 3
-    def body_rate_to_euler_dot(self, eul, np=np):
+    def body_rate_to_euler_dot(self, eul):
         """ Compute the transformation to go from body rates pqr to euler derivative
         for either a vector (3,) -> (3,3) or a sequence of vectors (3,N) -> (N,3,3) """
         # Align eul to (3,N)
@@ -164,7 +164,7 @@ class EulerRotation:
                      ])
         return M
 
-    def __call__(self, params, T, LMN, x, np=np):
+    def __call__(self, params, T, LMN, x):
         # Convert body-axis rates pqr to euler derivative
         eul_dot = apply(self.body_rate_to_euler_dot(x['att']), x['rate'])
         
@@ -179,11 +179,11 @@ class EulerRotation:
     
 class DefaultRotor:
     num_states = 0
-    def __init__(self, T_max, LMN_max, np=np):
+    def __init__(self, T_max, LMN_max):
         self.T_max = T_max
         self.LMN_max = LMN_max
         
-    def __call__(self, params, u, x, np=np):
+    def __call__(self, params, u, x):
         T = np.atleast_1d(u[0])
         LMN = u[1:4]
         
@@ -195,7 +195,7 @@ class DefaultRotor:
     
 class DefaultAero:
     num_states = 0
-    def __call__(self, params, u, x, np=np):
+    def __call__(self, params, u, x):
         d_pos = np.zeros_like(x['pos'])
         d_vel = np.zeros_like(x['vel'])
         d_att = np.zeros_like(x['att'])
@@ -224,9 +224,12 @@ class Quadcopter(object):
             self.att2rotm = eul2rotm
         
         # Calculate the index to unpack each state
-        self.state_vec = { 'pos' : range(0,3), 'vel' : range(3,6), 'rate' : range(6,9) }
-        i = 9; j = i + self.rotation.num_states
+        self.state_vec = {'pos' : range(0,3),
+                          'vel' : range(3,6)}
+        i = 6; j = i + self.rotation.num_states
         self.state_vec['att']   = range(i,j)
+        i = j; j = i + 3
+        self.state_vec['rate']   = range(i,j)
         i = j; j = i + self.rotor.num_states
         self.state_vec['rotor'] = range(i,j)
         i = j; j = i + self.aero.num_states
