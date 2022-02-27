@@ -547,13 +547,13 @@ def state_feedback(ref,x):
         
         return LMN_des
     
-    # T_des, att_des = acc_to_att(acc_des_b)
-    # LMN_des = attitude_state_feedback()
+    T_des, att_des = acc_to_att(acc_des_b)
+    LMN_des = attitude_state_feedback()
     
-    T_des, R_des = acc_to_rotm(acc_des_b)
-    if disable_vel[0:2].all():
-        R_des = eul2rotm(ref_att)
-    LMN_des = se3_geometric_control()
+    # T_des, R_des = acc_to_rotm(acc_des_b)
+    # if disable_vel[0:2].all():
+    #     R_des = eul2rotm(ref_att)
+    # LMN_des = se3_geometric_control()
     
     control_u = np.concatenate([T_des, LMN_des])
     return control_u
@@ -567,13 +567,13 @@ def ref_function(t):
     nan  = np.nan * t
     zero = 0 * t
     ref_pos  = stack_squeeze( [nan, nan, nan] )
-    # ref_pos[0] = 5*np.sin(1*t)
-    # ref_pos[1] = 5*np.sin(0.5*t)
+    ref_pos[0] = 5*np.sin(1*t)
+    ref_pos[1] = 5*np.sin(0.5*t)
     ref_pos[2] = -1 * (t > 0).astype(int)
     ref_vel  = stack_squeeze( [nan, nan, nan] )
     ref_att  = stack_squeeze( [nan, nan, zero] )
-    ref_att[0] = 0.5*np.sin(2*t)
-    ref_att[1] = 0.5*np.sin(1*t)
+    # ref_att[0] = 0.5*np.sin(2*t)
+    # ref_att[1] = 0.5*np.sin(1*t)
     # ref_att[2] = 0*np.sin(5*t)
     ref_rate = stack_squeeze( [nan, nan, nan] )
     
@@ -581,7 +581,7 @@ def ref_function(t):
 
 # Run Simulation
 Ts = 0.01
-t_span = [0,5]
+t_span = [0,20]
 t_eval = np.arange(t_span[0], t_span[1], Ts)
 
 # x0 = np.zeros(12)
