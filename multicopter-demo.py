@@ -44,6 +44,54 @@ def rotz(a):
     """Rotation matrix about z"""
     return R.from_euler('z', -a).as_matrix()
 
+def apply(M, vec) -> np.ndarray:
+    """ Apply a sequence of linear transformations (N,D,D) of length N and size D x D
+    to either a vector (D,) or a sequence of vectors (D,N) """
+    # Check for the single Rot matrix case (3,3) and return instantly
+    if M.ndim < 3:
+        return M @ vec
+    
+    # Apply N rotations to a single vector
+    if vec.ndim == 1:
+        for R in M:
+            return R @ vec
+        
+    # Apply N rotations to N vectors
+    elif M.shape[0] == vec.shape[1]:
+        N = M.shape[0]
+        D = M.shape[1]
+        output = np.zeros((D,N))
+        for i,R in enumerate(M):
+            output[:,i] = R @ vec[:,i]
+        return output
+    
+    # N rotations cannot be applied to M vectors
+    else:
+        raise ValueError("Cannot apply different number of transformations and vectors")
+
+def skew(vec):
+    """ Form the skew-symmetric matrix
+    to either a vector (3,) -> (3,3) or a sequence of vectors (3,N) -> (N,3,3) """
+    a1 = vec[0].reshape(-1,1,1)
+    a2 = vec[1].reshape(-1,1,1)
+    a3 = vec[2].reshape(-1,1,1)
+    zero = np.zeros_like(a1)
+    M = np.block( [[zero, -a3,    a2],
+                   [ a3,  zero,  -a1],
+                   [-a2,   a2,   zero]] )
+    return M
+    
+def atan2(Y, X) -> np.ndarray:
+    """Numpy's arctan2, but output is at least 1D array"""
+    return np.atleast_1d(np.arctan2(Y,X))
+
+def asin(X) -> np.ndarray:
+    """Numpy's arcsin, but output is at least 1D array"""
+    return np.atleast_1d(np.arcsin(X))
+
+def stack_squeeze(arr) -> np.ndarray:
+    """Stack along axis 0, then squeeze to remove any trailing dimensions of size 1"""
+    return np.squeeze(np.stack( arr ))
 
 def eul2rotm(eul) -> np.ndarray:
     """ Rotation matrix from euler angles
@@ -69,49 +117,44 @@ def eul2rotm(eul) -> np.ndarray:
                    [ -s[1],               c[1]*s[0],                  c[1]*c[0]      ] ])
     return M
 
-def apply(M, vec) -> np.ndarray:
-    """ Apply a sequence of linear transformations (Nx3x3)
-    to either a vector (3,) or a sequence of vectors (3,N) """
-    # Check for the single Rot matrix case (3,3) and return instantly
-    if M.ndim < 3:
-        return M @ vec
+def quat2rotm(quat) -> np.ndarray:
+    """Rotation matrix from quaternion
+    (4,N) --> (N,3,3) """
+    q0 = quat[0].reshape(-1,1,1)
+    q1 = quat[1].reshape(-1,1,1)
+    q2 = quat[2].reshape(-1,1,1)
+    q3 = quat[3].reshape(-1,1,1)
     
-    # Apply N rotations to a single vector
-    if vec.ndim == 1:
-        for R in M:
-            return R @ vec
-        
-    # Apply N rotations to N vectors
-    elif M.shape[0] == vec.shape[1]:
-        N = M.shape[0]
-        output = np.zeros((3,N))
-        for i,R in enumerate(M):
-            output[:,i] = R @ vec[:,i]
-        return output
-    
-    # N rotations cannot be applied to M vectors
-    else:
-        raise ValueError("Cannot apply different number of transformations and vectors")
-
-def skew(vec):
-    """ Form the skew-symmetric matrix
-    to either a vector (3,) -> (3,3) or a sequence of vectors (3,N) -> (N,3,3) """
-    a1 = vec[0].reshape(-1,1,1)
-    a2 = vec[1].reshape(-1,1,1)
-    a3 = vec[2].reshape(-1,1,1)
-    zero = np.zeros_like(a1)
-    M = np.block( [[zero, -a3,    a2],
-                   [ a3,  zero,  -a1],
-                   [-a2,   a2,   zero]] )
+    M = np.block([
+        [ q0**2 + q1**2 - q2**2 - q3**2,
+          2*(q1*q2 - q0*q3),
+          2*(q1*q3 + q0*q2)
+        ], 
+        [ 2*(q1*q2 + q0*q3),
+          q0**2 + q2**2 - q1**2 - q3**2,
+          2*(q2*q3 - q0*q1)
+        ],
+        [ 2*(q1*q3 - q0*q2),
+          2*(q2*q3 + q0*q1),
+          q0**2 + q3**2 - q1**2 - q2**2
+        ]
+    ])
     return M
-    
-def atan2(Y, X) -> np.ndarray:
-    """Numpy's arctan2, but output is at least 1D array"""
-    return np.atleast_1d(np.arctan2(Y,X))
 
-def stack_squeeze(arr) -> np.ndarray:
-    """Stack along axis 0, then squeeze to remove any trailing dimensions of size 1"""
-    return np.squeeze(np.stack( arr ))
+def quat2eul(quat) -> np.ndarray:
+    """Euler angles from quaternion
+    (4,N) --> (3,N) """
+    q0 = quat[0]; q1 = quat[1]
+    q2 = quat[2]; q3 = quat[3]
+    one = np.ones_like(q0)
+    
+    phi = atan2( 2*(q0*q1 + q2*q3), one - 2*(q1**2 + q2**2) )
+    theta = asin( 2*(q0*q2 - q3*q1) )
+    psi = atan2( 2*(q0*q3 + q1*q2), one - 2*(q2**2 + q3**3) )
+    
+    print(f'quat: {quat.shape} \t phi: {phi.shape} \t theta: {theta.shape} \t psi: {psi.shape}')
+    
+    return np.concatenate([phi,theta,psi])
 
 
 # -
