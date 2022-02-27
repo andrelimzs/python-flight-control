@@ -83,8 +83,8 @@ def apply(M, vec) -> np.ndarray:
     else:
         raise ValueError("Cannot apply different number of transformations and vectors")
 
-def skew(vec):
-    """ Form the skew-symmetric matrix
+def hatmap(vec):
+    """ Map a (R^3) vector to the SO(3) Lie algebra
     to either a vector (3,) -> (3,3) or a sequence of vectors (3,N) -> (N,3,3) """
     a1 = vec[0].reshape(-1,1,1)
     a2 = vec[1].reshape(-1,1,1)
@@ -92,9 +92,29 @@ def skew(vec):
     zero = np.zeros_like(a1)
     M = np.block( [[zero, -a3,    a2],
                    [ a3,  zero,  -a1],
-                   [-a2,   a2,   zero]] )
-    return M
-    
+                   [-a2,   a1,   zero]] )
+    return np.squeeze(M)
+
+# The hatmap is also the skew symmetric matrix
+skew = hatmap
+
+def veemap(M):
+    """ Map the SO(3) Lie algebra to a (R^3) vector
+    Input can be either (3,3) -> (3,) or (N,3,3) -> (3,N) """
+    if M.ndim == 2:
+        v = np.zeros(3)
+        v[0] = M[2,1]
+        v[1] = M[0,2]
+        v[2] = M[1,0]
+    elif M.ndim == 3:
+        N = M.shape[0]
+        v = np.concatenate([ M[:,2,1].reshape(1,N),
+                             M[:,0,2].reshape(1,N),
+                             M[:,1,0].reshape(1,N) ])        
+    else:
+        raise ValueError(f"{M.shape} cannot be interpreted as a SO(3) map")
+    return v
+
 def atan2(Y, X) -> np.ndarray:
     """Numpy's arctan2, but output is at least 1D array"""
     return np.atleast_1d(np.arctan2(Y,X))
