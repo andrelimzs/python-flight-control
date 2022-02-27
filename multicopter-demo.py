@@ -44,6 +44,20 @@ def rotz(a):
     """Rotation matrix about z"""
     return R.from_euler('z', -a).as_matrix()
 
+def dot_2d(v1,v2) -> np.ndarray:
+    """For (D,N) vectors, return (N,) dot products
+    Compute the dot product along each column (N times)"""
+    if v1.ndim == 1 and v2.ndim == 1:
+        return v1.T @ v1
+    elif v1.ndim == 2 and v2.ndim == 2:
+        N = v1.shape[1]
+        output = np.zeros(N)
+        for i in range(N):
+            output[:,i] = v1[:,i].T @ v2[:,i]
+        return output
+    else:
+        raise ValueError("cannot compute 2d dot product, v1 and v2 dimensions do not match")
+
 def apply(M, vec) -> np.ndarray:
     """ Apply a sequence of linear transformations (N,D,D) of length N and size D x D
     to either a vector (D,) or a sequence of vectors (D,N) """
@@ -225,6 +239,10 @@ class EulerRotation:
 class QuaternionRotation:
     num_states = 4
     x0 = np.array([1.,0.,0.,0.,0.,0.,0.])
+    def __init__(self, K=1):
+        # Renormalisation gain
+        self.K = K
+        
     def make_Omega(self, omega):
         w1 = omega[0].reshape(-1,1,1)
         w2 = omega[1].reshape(-1,1,1)
@@ -236,8 +254,13 @@ class QuaternionRotation:
                           [w3,  w2, -w1,  z ] ])
         
     def __call__(self, params, T, LMN, x):
+        q = x['att']
         # Use quaternion derivative formulation of \dot{q} = 0.5 * Omega * q
-        d_quat = 0.5 * apply(self.make_Omega(x['rate']), x['att'])
+        d_quat = 0.5 * apply(self.make_Omega(x['rate']), q)
+        
+        # Gain to limit norm drift
+        c = self.K * (np.ones_like(q) - dot_2d(q,q))
+        d_quat += c * q
         
         # Angular Rate
         euler_cross_product = apply(skew(x['rate']) @ params['J'], x['rate'])
