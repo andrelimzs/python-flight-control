@@ -29,34 +29,34 @@ import meshcat.transformations as tf
 # Create a new visualizer
 vis = meshcat.Visualizer()
 
-# +
+# + tags=[]
 from scipy.spatial.transform import Rotation as R
 
 def rotx(a):
     """Rotation matrix about x"""
-    return R.from_euler('x', -a).as_matrix()
+    return R.from_euler('X', a).as_matrix()
 
 def roty(a):
     """Rotation matrix about y"""
-    return R.from_euler('y', -a).as_matrix()
+    return R.from_euler('Y', a).as_matrix()
 
 def rotz(a):
     """Rotation matrix about z"""
-    return R.from_euler('z', -a).as_matrix()
+    return R.from_euler('Z', a).as_matrix()
 
 def dot_2d(v1,v2) -> np.ndarray:
     """For (D,N) vectors, return (N,) dot products
     Compute the dot product along each column (N times)"""
     if v1.ndim == 1 and v2.ndim == 1:
-        return v1.T @ v1
+        return np.atleast_1d(np.dot(v1,v2))
     elif v1.ndim == 2 and v2.ndim == 2:
         N = v1.shape[1]
         output = np.zeros(N)
         for i in range(N):
-            output[:,i] = v1[:,i].T @ v2[:,i]
+            output[i] = v1[:,i].T @ v2[:,i]
         return output
     else:
-        raise ValueError("cannot compute 2d dot product, v1 and v2 dimensions do not match")
+        raise ValueError(f"Cannot compute 2d dot product, v1 {v1.shape} and v2 {v2.shape} dimensions do not match")
 
 def apply(M, vec) -> np.ndarray:
     """ Apply a sequence of linear transformations (N,D,D) of length N and size D x D
@@ -67,8 +67,7 @@ def apply(M, vec) -> np.ndarray:
     
     # Apply N rotations to a single vector
     if vec.ndim == 1:
-        for R in M:
-            return R @ vec
+        return M @ vec
         
     # Apply N rotations to N vectors
     elif M.shape[0] == vec.shape[1]:
@@ -127,29 +126,33 @@ def stack_squeeze(arr) -> np.ndarray:
     """Stack along axis 0, then squeeze to remove any trailing dimensions of size 1"""
     return np.squeeze(np.stack( arr ))
 
-def eul2rotm(eul) -> np.ndarray:
-    """ Rotation matrix from euler angles
-    If input is (3,) return (3,3)
-    If input is (3,N) return (N,3,3) """
-    # Align eul to (3,N)
-    if eul.shape[0] != 3:
-        eul = eul.T
+# def eul2rotm(eul) -> np.ndarray:
+#     """ Rotation matrix from euler angles
+#     If input is (3,) return (3,3)
+#     If input is (3,N) return (N,3,3) """
+#     # Align eul to (3,N)
+#     if eul.shape[0] != 3:
+#         eul = eul.T
     
-    # Get length N
-    N = eul.shape[1] if eul.ndim > 1 else 1
+#     # Get length N
+#     N = eul.shape[1] if eul.ndim > 1 else 1
     
-    # Precompute the sin and cos terms
-    s = []
-    c = []
-    for i in range(3):
-        s.append( np.sin(eul[i]).reshape(-1,1,1) )
-        c.append( np.cos(eul[i]).reshape(-1,1,1) )
+#     # Precompute the sin and cos terms
+#     s = []
+#     c = []
+#     for i in range(3):
+#         s.append( np.sin(eul[i]).reshape(-1,1,1) )
+#         c.append( np.cos(eul[i]).reshape(-1,1,1) )
     
-    # Form rotation matrix (N,3,3)
-    M = np.block([ [c[2]*c[1], c[2]*s[1]*s[0] - s[2]*c[0], c[2]*s[1]*c[0] + s[2]*s[0]],
-                   [s[2]*c[1], s[2]*s[1]*s[0] + c[2]*c[0], s[2]*s[1]*c[0] - c[2]*s[0]],
-                   [ -s[1],               c[1]*s[0],                  c[1]*c[0]      ] ])
-    return M
+#     # Form rotation matrix (N,3,3)
+#     M = np.block([ [c[2]*c[1], c[2]*s[1]*s[0] - s[2]*c[0], c[2]*s[1]*c[0] + s[2]*s[0]],
+#                    [s[2]*c[1], s[2]*s[1]*s[0] + c[2]*c[0], s[2]*s[1]*c[0] - c[2]*s[0]],
+#                    [ -s[1],               c[1]*s[0],                  c[1]*c[0]      ] ])
+    
+#     return np.squeeze(M)
+
+def eul2rotm(eul):
+    return R.from_euler('ZYX', eul[::-1].T).as_matrix()
 
 def quat2rotm(quat) -> np.ndarray:
     """Rotation matrix from quaternion
@@ -159,36 +162,44 @@ def quat2rotm(quat) -> np.ndarray:
     q2 = quat[2].reshape(-1,1,1)
     q3 = quat[3].reshape(-1,1,1)
     
-    M = np.block([
-        [ q0**2 + q1**2 - q2**2 - q3**2,
-          2*(q1*q2 - q0*q3),
-          2*(q1*q3 + q0*q2)
-        ], 
-        [ 2*(q1*q2 + q0*q3),
-          q0**2 + q2**2 - q1**2 - q3**2,
-          2*(q2*q3 - q0*q1)
-        ],
-        [ 2*(q1*q3 - q0*q2),
-          2*(q2*q3 + q0*q1),
-          q0**2 + q3**2 - q1**2 - q2**2
-        ]
-    ])
-    return M
+    M = np.block([ [ q0**2 + q1**2 - q2**2 - q3**2,
+                     2*(q1*q2 - q0*q3),
+                     2*(q1*q3 + q0*q2) ], 
+                   [ 2*(q1*q2 + q0*q3),
+                     q0**2 + q2**2 - q1**2 - q3**2,
+                     2*(q2*q3 - q0*q1) ],
+                   [ 2*(q1*q3 - q0*q2),
+                     2*(q2*q3 + q0*q1),
+                     q0**2 + q3**2 - q1**2 - q2**2 ] ])
+    
+    return np.squeeze(M)
+
+# def quat2eul(quat) -> np.ndarray:
+#     """ Euler angles from quaternion
+#     (4,N) --> (3,N) """
+#     q0 = quat[0]
+#     q1 = quat[1]
+#     q2 = quat[2]
+#     q3 = quat[3]
+#     one = np.ones_like(q0)
+    
+#     phi = atan2( 2*(q0*q1 + q2*q3), one - 2*(q1**2 + q2**2) )
+#     theta = asin( 2*(q0*q2 - q3*q1) )
+#     psi = atan2( 2*(q0*q3 + q1*q2), one - 2*(q2**2 + q3**3) )
+    
+#     return np.squeeze(np.stack([phi,theta,psi]))
 
 def quat2eul(quat) -> np.ndarray:
-    """Euler angles from quaternion
+    """ Euler Angles from Quaternion
     (4,N) --> (3,N) """
-    q0 = quat[0]
-    q1 = quat[1]
-    q2 = quat[2]
-    q3 = quat[3]
-    one = np.ones_like(q0)
-    
-    phi = atan2( 2*(q0*q1 + q2*q3), one - 2*(q1**2 + q2**2) )
-    theta = asin( 2*(q0*q2 - q3*q1) )
-    psi = atan2( 2*(q0*q3 + q1*q2), one - 2*(q2**2 + q3**3) )
-    
-    return np.squeeze(np.stack([phi,theta,psi]))
+    # Convert from (w,x,y,z) to (x,y,z,w)
+    quat_scipy = np.concatenate([quat[1:4], quat[0:1]])
+    eul = R.from_quat(quat_scipy.T).as_euler('ZYX').T
+    return np.squeeze(eul[::-1])
+
+def rotm2eul(rotm) -> np.ndarray:
+    eul = R.from_matrix(rotm).as_euler('ZYX')
+    return np.squeeze(eul[::-1])
 
 
 # -
@@ -241,7 +252,7 @@ class EulerRotation:
                        [zero,   c2,     -s2],
                        [zero, s2*sec1, c2*sec1]
                      ])
-        return M
+        return np.squeeze(M)
 
     def __call__(self, params, T, LMN, x):
         # Convert body-axis rates pqr to euler derivative
@@ -259,7 +270,7 @@ class EulerRotation:
 class QuaternionRotation:
     num_states = 4
     x0 = np.array([1.,0.,0.,0.,0.,0.,0.])
-    def __init__(self, K=1):
+    def __init__(self, K=0.1):
         # Renormalisation gain
         self.K = K
         
@@ -268,15 +279,18 @@ class QuaternionRotation:
         w2 = omega[1].reshape(-1,1,1)
         w3 = omega[2].reshape(-1,1,1)
         z  = np.zeros_like(w1)
-        return np.block([ [z,  -w1, -w2, -w3],
-                          [w1,  z,   w3, -w2],
-                          [w2, -w3,  z,   w1],
-                          [w3,  w2, -w1,  z ] ])
+        Omega = np.block([ [z,  -w1, -w2, -w3],
+                           [w1,  z,   w3, -w2],
+                           [w2, -w3,  z,   w1],
+                           [w3,  w2, -w1,  z ] ])
+        return np.squeeze(Omega)
         
     def __call__(self, params, T, LMN, x):
         q = x['att']
+        
         # Use quaternion derivative formulation of \dot{q} = 0.5 * Omega * q
-        d_quat = 0.5 * apply(self.make_Omega(x['rate']), q)
+        Omega = self.make_Omega(x['rate'])
+        d_quat = 0.5 * apply(Omega, q)
         
         # Gain to limit norm drift
         c = self.K * (np.ones_like(q) - dot_2d(q,q))
