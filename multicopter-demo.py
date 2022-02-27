@@ -164,7 +164,7 @@ def quat2eul(quat) -> np.ndarray:
 # 2. Generate trajectories
 # 3. Define control law
 
-# +
+# + tags=[]
 class Translation:
     num_states = 6
     x0 = np.zeros(6)
@@ -273,8 +273,7 @@ class DefaultAero:
         return np.concatenate([d_pos, d_vel, d_att, d_rate])
 
 
-# -
-
+# + tags=[]
 class Quadcopter(object):
     def __init__(self, rotationType='Euler', params=None, reference=None, control=None, rotor=None, aero=None):
         # Assign values, with defaults
@@ -345,6 +344,7 @@ class Quadcopter(object):
         dydt += self.aero(self.params, u, state)
         
         return dydt
+
 
 
 # + tags=[]
@@ -498,6 +498,7 @@ state = quadcopter.unpack_state(sol.y)
 pos   = state['pos']
 vel   = state['vel']
 att   = state['att']
+eul   = state['eul']
 rate  = state['rate']
 
 # Reference
@@ -508,7 +509,7 @@ ref_att  = ref[6:9]
 ref_rate = ref[9:12]
 
 # Control input
-control_u = state_feedback(ref, sol.y)
+control_u = state_feedback(ref, state)
 T   = control_u[0]
 LMN = control_u[1:4]
 
@@ -530,7 +531,7 @@ ax[0,1].set_title('Vel')
         
 fig,ax = plt.subplots(3,2, sharex=True)
 for i in range(3):
-    ax[i,0].plot(t, np.rad2deg(att[i]))
+    ax[i,0].plot(t, np.rad2deg(eul[i]))
     ax[i,0].plot(t, np.rad2deg(ref_att[i]))
     
     ax[i,1].plot(t, np.rad2deg(rate[i]))
@@ -541,7 +542,10 @@ for i in range(3):
 ax[0,0].set_title('Att')
 ax[0,1].set_title('Rate')
 
-
+# # Plot quaternion components q0 .. q3
+# fig,ax = plt.subplots(4, sharex=True)
+# for i in range(4):
+#     ax[i].plot(t, np.rad2deg(att[i]))
 # -
 
 # **Visualise**
@@ -579,7 +583,7 @@ vis.jupyter_cell()
 for i in range(ref.shape[1]):
     # Convert NED to ENU
     pos_enu = np.array([1,-1,-1]) * pos[:,i]
-    att_enu = np.array([1,-1,-1]) * att[:,i]
+    att_enu = np.array([1,-1,-1]) * eul[:,i]
     
     # Form homogeneous transformation
     T = tf.euler_matrix(*att_enu)
