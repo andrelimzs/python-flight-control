@@ -375,69 +375,37 @@ def state_feedback(ref,x):
     Coordinate Frames
     - Position and Velocity are in NED
     """
-    # Convert x to np.ndarray if necessary
-    # if type(x) is not np.ndarray: x = np.array(x)
     ref = ref.copy()
-    
-    #[DEBUG] print(f'x: {x.shape} \t ref: {ref.shape}')
     
     # Physical parameters
     mass = 1
     MOI = np.diag([0.01, 0.01, 0.02])
     
+    # ====================  Prepare Reference & State Inputs  ====================
     # Unpack state
-    if type(x) is np.ndarray:
-        pos  = x[0:3]
-        vel  = x[3:6]
-        att  = x[6:9]
-        rate = x[9:12]
-        
-    elif type(x) is dict:
-        pos  = x['pos']
-        vel  = x['vel']
-        att  = x['att']
-        rate = x['rate']
+    pos = x['pos']; vel  = x['vel']
+    att = x['att']; rate = x['rate']
+    eRb = x['eRb']; eul  = x['eul']
     
     # Unpack reference
-    ref_pos  = ref[0:3]
-    ref_vel  = ref[3:6]
-    ref_att  = ref[6:9]
-    ref_rate = ref[9:12]
+    ref_pos  = ref[0:3]; ref_vel  = ref[3:6]
+    ref_att  = ref[6:9]; ref_rate = ref[9:12]
     
     # Disable control loop if reference command all outer-loop commands are nan
     disable_pos = np.isnan(ref_pos)
     disable_vel = np.isnan(ref_vel) & disable_pos
     disable_att = np.isnan(ref_att) & disable_vel
     
-    #[DEBUG] print(f'disable_pos: {disable_pos.shape} \t disable_vel: {disable_vel.shape} \t disable_att: {disable_att.shape}')
-    #[DEBUG] print(f'ref_pos: {ref_pos.shape} \t pos: {pos.shape}')
-    
     ref_pos[disable_pos] = pos[disable_pos]
     ref_vel[disable_vel] = vel[disable_vel]
-    ref_att[disable_att] = x['eul'][disable_att]
+    ref_att[disable_att] = eul[disable_att]
     
     # Replace the remaining NaNs with zero
     ref_vel[np.isnan(ref_vel) & ~disable_vel] = 0
     ref_att[np.isnan(ref_att) & ~disable_att] = 0
     ref_rate[np.isnan(ref_rate)] = 0
     
-    # Check for NaNs
-    if np.isnan(pos).any():
-        raise ValueError('pos is nan')
-    if np.isnan(vel).any():
-        raise ValueError('vel is nan')
-    if np.isnan(att).any():
-        raise ValueError('att is nan')
-    if np.isnan(rate).any():
-        raise ValueError('rate is nan')
-        
-    if np.isnan(ref_vel).any():
-        raise ValueError('ref_vel is nan')
-    if np.isnan(ref_att).any():
-        raise ValueError('ref_att is nan')
-    if np.isnan(ref_rate).any():
-        raise ValueError('ref_rate is nan')
-    
+    # =============================  Translation  =============================
     # Position + Velocity Subsystem
     pos_err = ref_pos - pos
     vel_err = ref_vel - vel
@@ -446,15 +414,13 @@ def state_feedback(ref,x):
     # Add gravity
     acc_des[2] -= 9.81
     
+    # Saturate acc desired
     acc_des[2] = np.clip(acc_des[2], -20, -5)
     
-    # # Saturate a_des while preserving direction
-    # z_des_violation = acc_des[2,:] - np.clip(acc_des[2,:], -20, -5)   
-    
-    # Convert acceleration into orientation + thrust
-    # Transform pos/vel from NED frame to body frame 
+    # Transform acc_des to body frame
     acc_des_b = apply( rotz(-att[2]), acc_des )
     
+    # =====================  Acceleration to Orientation  =====================
     # Compute desired roll/pitch from desired acceleration
     T_des = np.atleast_1d(LA.norm(acc_des_b, axis=0)) * mass
     # T_des = -acc_des_b[2,:].reshape(1,-1) * mass
@@ -468,31 +434,18 @@ def state_feedback(ref,x):
     psi_des   =  np.zeros(phi_des.shape)
     
     if theta_des.shape[0] > 1:
-        theta_des = theta_des.reshape((1,-1)) 
-    
-    #[DEBUG] print(f'acc_des_b: {acc_des_b.shape}')
-    #[DEBUG] print(f'phi_des: {phi_des.shape} \t theta_des: {theta_des.shape} \t psi_des: {psi_des.shape}')
+        theta_des = theta_des.reshape((1,-1))
     
     # Form att desired vector
     att_des = stack_squeeze([phi_des, theta_des, psi_des])
     
-    if np.isnan(att_des).any():
-        print(acc_des_b[1] / T_des)
-        raise ValueError(f'att_des {att_des} is nan')
-        
-    #[DEBUG] print(f'ref_att: {ref_att.shape} \t att_des: {att_des.shape} \t att: {att.shape}')
-    
+    # =============================  Rotation  =============================
     # Attitude Subsystem
-    att_err  = ref_att + att_des - att 
+    att_err  = ref_att + att_des - eul 
     rate_err = ref_rate - rate
-    
-    #[DEBUG] print(f'att_err: {att_err.shape} \t rate_err: {rate_err.shape}')
         
     ang_acc_des  = K_att @ np.concatenate([att_err, rate_err])
     LMN_des = MOI @ ang_acc_des
-    
-    #[DEBUG] print(f'MOI: {MOI.shape} \t ang_acc_des: {ang_acc_des.shape}')
-    #[DEBUG] print(f'T_des: {T_des.shape} \t LMN_des: {LMN_des.shape}')
     
     control_u = np.concatenate([T_des, LMN_des])
     
