@@ -107,12 +107,14 @@ def stack_squeeze(arr) -> np.ndarray:
 # 2. Generate trajectories
 # 3. Define control law
 
-class EOM(object):
+# +
     def __init__(self, rotationType='Euler', params=None, reference=None, control=None, rotor=None):
+class Quadcopter(object):
+    def __init__(self, rotationType='Euler', params=None, reference=None, control=None, rotor=None, aero=None):
         # Assign values, with defaults
         self.reference = reference if reference else DefaultReference
         self.control = control if control else StateFeedbackControl
-        self.rotor = rotor if rotor else DefaultRotor()
+        self.rotor = rotor if rotor else DefaultRotor(30,1)
         self.aero = aero if aero else DefaultAero()
         self.params = params if params else DefaultParams()
         
@@ -128,14 +130,16 @@ class EOM(object):
         # Calculate the index to unpack each state
         self.state_vec = { 'pos' : range(0,3), 'vel' : range(3,6), 'rate' : range(6,9) }
         i = 9; j = i + self.rotation.num_states
-        self.state_vec['att'] = range(i,j)
+        self.state_vec['att']   = range(i,j)
         i = j; j = i + self.rotor.num_states
         self.state_vec['rotor'] = range(i,j)
         i = j; j = i + self.aero.num_states
-        self.state_vec['aero'] = range(i,j)
+        self.state_vec['aero']  = range(i,j)
         
     def unpack_state(self, y):
         states = ['pos','vel','att','rate','rotor','aero']
+        
+        y = np.squeeze(y)
         x = { s : y[self.state_vec[s]] for s in states }
         
         # Compute certain useful values
@@ -143,21 +147,21 @@ class EOM(object):
         
         return x
     
-    def equation(self,t,y):
+    def __call__(self, t, y):
         state = self.unpack_state(y)
         
         # Execute trajectory generation and control law
         ref = self.reference(t)
-        u = self.control(ref,state)
+        u = self.control(ref, state)
         
         # Simulate rotor, translation and rotation
-        T,LMN = self.rotor(u,state)
-        d_translation = self.translation(T,LMN,state)
-        d_rotation = self.rotation(T,LMN,state)
+        T,LMN = self.rotor(self.params, u, state)
+        d_translation = self.translation(self.params, T, LMN, state)
+        d_rotation = self.rotation(self.params, T, LMN, state)
         dydt = np.concatenate([d_translation, d_rotation])
         
         # Simulate Aerodynamics
-        dydt += aero(u,state)
+        dydt += self.aero(self.params, u, state)
         
         return dydt
 
