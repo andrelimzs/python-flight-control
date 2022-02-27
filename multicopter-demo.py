@@ -29,8 +29,22 @@ import meshcat.transformations as tf
 # Create a new visualizer
 vis = meshcat.Visualizer()
 
-
 # +
+from scipy.spatial.transform import Rotation as R
+
+def rotx(a):
+    """Rotation matrix about x"""
+    return R.from_euler('x', -a).as_matrix()
+
+def roty(a):
+    """Rotation matrix about y"""
+    return R.from_euler('y', -a).as_matrix()
+
+def rotz(a):
+    """Rotation matrix about z"""
+    return R.from_euler('z', -a).as_matrix()
+
+
 def eul2rotm(eul) -> np.ndarray:
     """ Rotation matrix from euler angles
     If input is (3,) return (3,3)
@@ -219,9 +233,8 @@ class Quadcopter(object):
         self.state_vec['aero']  = range(i,j)
         
     def unpack_state(self, y):
-        states = ['pos','vel','att','rate','rotor','aero']
-        
         y = np.squeeze(y)
+        states = ['pos','vel','att','rate','rotor','aero']
         x = { s : y[self.state_vec[s]] for s in states }
         
         # Compute certain useful values
@@ -248,12 +261,7 @@ class Quadcopter(object):
         return dydt
 
 
-a = np.arange(9)
-r = range(3,6)
-a[r].shape
-
-
-# + tags=[]
+# + tags=[] jupyter={"source_hidden": true}
 # Define Multicopter Physics
 def eqn_of_motion(t, y, control_law, ref_function):
     mass = 1
