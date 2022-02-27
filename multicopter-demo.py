@@ -144,17 +144,17 @@ def quat2rotm(quat) -> np.ndarray:
 def quat2eul(quat) -> np.ndarray:
     """Euler angles from quaternion
     (4,N) --> (3,N) """
-    q0 = quat[0]; q1 = quat[1]
-    q2 = quat[2]; q3 = quat[3]
+    q0 = quat[0]
+    q1 = quat[1]
+    q2 = quat[2]
+    q3 = quat[3]
     one = np.ones_like(q0)
     
     phi = atan2( 2*(q0*q1 + q2*q3), one - 2*(q1**2 + q2**2) )
     theta = asin( 2*(q0*q2 - q3*q1) )
     psi = atan2( 2*(q0*q3 + q1*q2), one - 2*(q2**2 + q3**3) )
     
-    print(f'quat: {quat.shape} \t phi: {phi.shape} \t theta: {theta.shape} \t psi: {psi.shape}')
-    
-    return np.concatenate([phi,theta,psi])
+    return np.squeeze(np.stack([phi,theta,psi]))
 
 
 # -
@@ -167,6 +167,7 @@ def quat2eul(quat) -> np.ndarray:
 # +
 class Translation:
     num_states = 6
+    x0 = np.zeros(6)
     def __call__(self, params, T, LMN, x):
         # Form thrust vector (in body frame)
         thrust = np.concatenate([0*T, 0*T, -T])
@@ -182,6 +183,7 @@ class Translation:
 
 class EulerRotation:
     num_states = 3
+    x0 = np.zeros(6)
     def body_rate_to_euler_dot(self, eul):
         """ Compute the transformation to go from body rates pqr to euler derivative
         for either a vector (3,) -> (3,3) or a sequence of vectors (3,N) -> (N,3,3) """
@@ -222,7 +224,8 @@ class EulerRotation:
 
 class QuaternionRotation:
     num_states = 4
-    def form_Omega(omega):
+    x0 = np.array([1.,0.,0.,0.,0.,0.,0.])
+    def make_Omega(self, omega):
         w1 = omega[0].reshape(-1,1,1)
         w2 = omega[1].reshape(-1,1,1)
         w3 = omega[2].reshape(-1,1,1)
@@ -234,7 +237,7 @@ class QuaternionRotation:
         
     def __call__(self, params, T, LMN, x):
         # Use quaternion derivative formulation of \dot{q} = 0.5 * Omega * q
-        d_quat = 0.5 * apply(form_Omega(x['rate'], x['att']))
+        d_quat = 0.5 * apply(self.make_Omega(x['rate']), x['att'])
         
         # Angular Rate
         euler_cross_product = apply(skew(x['rate']) @ params['J'], x['rate'])
@@ -244,6 +247,7 @@ class QuaternionRotation:
         
 class DefaultRotor:
     num_states = 0
+    x0 = np.zeros(0)
     def __init__(self, T_max, LMN_max):
         self.T_max = T_max
         self.LMN_max = LMN_max
@@ -260,6 +264,7 @@ class DefaultRotor:
     
 class DefaultAero:
     num_states = 0
+    x0 = np.zeros(0)
     def __call__(self, params, u, x):
         d_pos = np.zeros_like(x['pos'])
         d_vel = np.zeros_like(x['vel'])
@@ -288,7 +293,7 @@ class Quadcopter(object):
         else:
             self.rotation = EulerRotation()
             self.att2rotm = eul2rotm
-            self.att2eul = lambda x: x
+            self.att2eul  = lambda x: x
         
         # Calculate the index to unpack each state
         self.state_vec = {'pos' : range(0,3),
@@ -303,6 +308,7 @@ class Quadcopter(object):
         self.state_vec['aero']  = range(i,j)
         
     def unpack_state(self, y):
+        """Unpack y (np.ndarray) into state (dict)"""
         y = np.squeeze(y)
         states = ['pos','vel','att','rate','rotor','aero']
         x = { s : y[self.state_vec[s]] for s in states }
@@ -312,8 +318,17 @@ class Quadcopter(object):
         x['eul'] = self.att2eul(x['att'])
         
         return x
-    
+        
+    def generate_x0(self):
+        """Generate an initial state vector"""
+        x0 = np.concatenate([ self.translation.x0,
+                              self.rotation.x0,
+                              self.rotor.x0,
+                              self.aero.x0 ])
+        return x0
+        
     def __call__(self, t, y):
+        """ODE function"""
         state = self.unpack_state(y)
         
         # Execute trajectory generation and control law
@@ -514,14 +529,15 @@ Ts = 0.01
 t_span = [0,20]
 t_eval = np.arange(t_span[0], t_span[1], Ts)
 
-# y0 = np.zeros(12)
-# sol = solve_ivp(eqn_of_motion, t_span, y0, t_eval=t_eval,
+# x0 = np.zeros(12)
+# sol = solve_ivp(eqn_of_motion, t_span, x0, t_eval=t_eval,
 #                 args=(state_feedback, ref_function))
 
-y0 = np.zeros(13)
+
 params = { 'mass': 1, 'J': np.array([0.01, 0.01, 0.02])}
 quadcopter = Quadcopter('Quaternion', params=params, reference=ref_function, control=state_feedback)
-sol = solve_ivp(quadcopter, t_span, y0, t_eval=t_eval)
+x0 = quadcopter.generate_x0()
+sol = solve_ivp(quadcopter, t_span, x0, t_eval=t_eval)
 
 # Unpack solution
 t = sol.t
