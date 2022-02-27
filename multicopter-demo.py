@@ -218,8 +218,30 @@ class EulerRotation:
         euler_cross_product = apply(skew(x['rate']) @ params['J'], x['rate'])
         d_rate = 1 / params['J'] * (LMN - euler_cross_product)
         
-        return np.concatenate([d_att,d_rate])
-    
+        return np.concatenate([d_att, d_rate])
+
+class QuaternionRotation:
+    num_states = 4
+    def form_Omega(omega):
+        w1 = omega[0].reshape(-1,1,1)
+        w2 = omega[1].reshape(-1,1,1)
+        w3 = omega[2].reshape(-1,1,1)
+        z  = np.zeros_like(w1)
+        return np.block([ [z,  -w1, -w2, -w3],
+                          [w1,  z,   w3, -w2],
+                          [w2, -w3,  z,   w1],
+                          [w3,  w2, -w1,  z ] ])
+        
+    def __call__(self, params, T, LMN, x):
+        # Use quaternion derivative formulation of \dot{q} = 0.5 * Omega * q
+        d_quat = 0.5 * apply(form_Omega(x['rate'], x['att']))
+        
+        # Angular Rate
+        euler_cross_product = apply(skew(x['rate']) @ params['J'], x['rate'])
+        d_rate = 1 / params['J'] * (LMN - euler_cross_product)
+        
+        return np.concatenate([d_quat, d_rate])
+        
 class DefaultRotor:
     num_states = 0
     def __init__(self, T_max, LMN_max):
@@ -262,9 +284,11 @@ class Quadcopter(object):
         if rotationType == 'Quaternion':
             self.rotation = QuaternionRotation()
             self.att2rotm = quat2rotm
+            self.att2eul  = quat2eul
         else:
             self.rotation = EulerRotation()
             self.att2rotm = eul2rotm
+            self.att2eul = lambda x: x
         
         # Calculate the index to unpack each state
         self.state_vec = {'pos' : range(0,3),
@@ -284,7 +308,8 @@ class Quadcopter(object):
         x = { s : y[self.state_vec[s]] for s in states }
         
         # Compute certain useful values
-        x['eRb']  = self.att2rotm(x['att'])
+        x['eRb'] = self.att2rotm(x['att'])
+        x['eul'] = self.att2eul(x['att'])
         
         return x
     
@@ -374,7 +399,7 @@ def state_feedback(ref,x):
     
     ref_pos[disable_pos] = pos[disable_pos]
     ref_vel[disable_vel] = vel[disable_vel]
-    ref_att[disable_att] = att[disable_att]
+    ref_att[disable_att] = x['eul'][disable_att]
     
     # Replace the remaining NaNs with zero
     ref_vel[np.isnan(ref_vel) & ~disable_vel] = 0
@@ -488,20 +513,23 @@ def ref_function(t):
 Ts = 0.01
 t_span = [0,20]
 t_eval = np.arange(t_span[0], t_span[1], Ts)
-y0 = np.zeros(12)
+
+# y0 = np.zeros(12)
 # sol = solve_ivp(eqn_of_motion, t_span, y0, t_eval=t_eval,
 #                 args=(state_feedback, ref_function))
 
+y0 = np.zeros(13)
 params = { 'mass': 1, 'J': np.array([0.01, 0.01, 0.02])}
-quadcopter = Quadcopter(params=params, reference=ref_function, control=state_feedback)
+quadcopter = Quadcopter('Quaternion', params=params, reference=ref_function, control=state_feedback)
 sol = solve_ivp(quadcopter, t_span, y0, t_eval=t_eval)
 
 # Unpack solution
 t = sol.t
-pos  = sol.y[0:3]
-vel  = sol.y[3:6]
-att  = sol.y[6:9]
-rate = sol.y[9:12]
+state = quadcopter.unpack_state(sol.y)
+pos   = state['pos']
+vel   = state['vel']
+att   = state['att']
+rate  = state['rate']
 
 # Reference
 ref  = ref_function(sol.t)
