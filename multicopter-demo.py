@@ -108,7 +108,89 @@ def stack_squeeze(arr) -> np.ndarray:
 # 3. Define control law
 
 # +
-    def __init__(self, rotationType='Euler', params=None, reference=None, control=None, rotor=None):
+class Translation:
+    num_states = 6
+    def __call__(self, params, T, LMN, x, np=np):
+        # Form thrust vector (in body frame)
+        thrust = np.concatenate([0*T, 0*T, -T])
+
+        # Position
+        d_pos = x['vel']
+
+        # Velocity
+        d_vel = apply(x['eRb'], thrust) / params['mass']
+        d_vel[2] += 9.81
+
+        return np.concatenate([d_pos, d_vel])
+
+class EulerRotation:
+    num_states = 3
+    def body_rate_to_euler_dot(self, eul, np=np):
+        """ Compute the transformation to go from body rates pqr to euler derivative
+        for either a vector (3,) -> (3,3) or a sequence of vectors (3,N) -> (N,3,3) """
+        # Align eul to (3,N)
+        if eul.shape[0] != 3:
+            eul = eul.T
+
+        # Get length N
+        N = eul.shape[1] if eul.ndim > 1 else 1
+
+        # Precompute the sin and cos terms
+        one = np.ones_like(eul[0]).reshape(-1,1,1)
+        zero = np.zeros_like(eul[0]).reshape(-1,1,1)
+        s2 = np.sin(eul[2]).reshape(-1,1,1)
+        c2 = np.cos(eul[2]).reshape(-1,1,1)
+        t1 = np.tan(eul[1]).reshape(-1,1,1)
+        sec1 = 1 / np.cos(eul[1]).reshape(-1,1,1)
+
+        # Form rotation matrix (N,3,3)
+        M = np.block([ [one,  s2*t1,   c2*t1],
+                       [zero,   c2,     -s2],
+                       [zero, s2*sec1, c2*sec1]
+                     ])
+        return M
+
+    def __call__(self, params, T, LMN, x, np=np):
+        # Convert body-axis rates pqr to euler derivative
+        eul_dot = apply(self.body_rate_to_euler_dot(x['att']), x['rate'])
+        
+        # Attitude
+        d_att = eul_dot
+
+        # Angular Rate
+        euler_cross_product = apply(skew(x['rate']) @ params['J'], x['rate'])
+        d_rate = 1 / params['J'] * (LMN - euler_cross_product)
+        
+        return np.concatenate([d_att,d_rate])
+    
+class DefaultRotor:
+    num_states = 0
+    def __init__(self, T_max, LMN_max, np=np):
+        self.T_max = T_max
+        self.LMN_max = LMN_max
+        
+    def __call__(self, params, u, x, np=np):
+        T = np.atleast_1d(u[0])
+        LMN = u[1:4]
+        
+        # Saturate the Thrust and Torques
+        T = np.clip(T, 0, self.T_max)
+        LMN = np.clip(LMN, -self.LMN_max, self.LMN_max)
+        
+        return T, LMN
+    
+class DefaultAero:
+    num_states = 0
+    def __call__(self, params, u, x, np=np):
+        d_pos = np.zeros_like(x['pos'])
+        d_vel = np.zeros_like(x['vel'])
+        d_att = np.zeros_like(x['att'])
+        d_rate = np.zeros_like(x['rate'])
+        return np.concatenate([d_pos, d_vel, d_att, d_rate])
+
+
+# -
+
 class Quadcopter(object):
     def __init__(self, rotationType='Euler', params=None, reference=None, control=None, rotor=None, aero=None):
         # Assign values, with defaults
@@ -166,33 +248,12 @@ class Quadcopter(object):
         return dydt
 
 
+a = np.arange(9)
+r = range(3,6)
+a[r].shape
+
 
 # + tags=[]
-def body_rate_to_euler_dot(eul):
-    """ Compute the transformation to go from body rates pqr to euler derivative
-    for either a vector (3,) -> (3,3) or a sequence of vectors (3,N) -> (N,3,3) """
-    # Align eul to (3,N)
-    if eul.shape[0] != 3:
-        eul = eul.T
-    
-    # Get length N
-    N = eul.shape[1] if eul.ndim > 1 else 1
-    
-    # Precompute the sin and cos terms
-    one = np.ones_like(eul[0]).reshape(-1,1,1)
-    zero = np.zeros_like(eul[0]).reshape(-1,1,1)
-    s2 = np.sin(eul[2]).reshape(-1,1,1)
-    c2 = np.cos(eul[2]).reshape(-1,1,1)
-    t1 = np.tan(eul[1]).reshape(-1,1,1)
-    sec1 = 1 / np.cos(eul[1]).reshape(-1,1,1)
-    
-    # Form rotation matrix (N,3,3)
-    M = np.block([ [one,  s2*t1,   c2*t1],
-                   [zero,   c2,     -s2],
-                   [zero, s2*sec1, c2*sec1]
-                 ])
-    return M
-
 # Define Multicopter Physics
 def eqn_of_motion(t, y, control_law, ref_function):
     mass = 1
@@ -202,6 +263,7 @@ def eqn_of_motion(t, y, control_law, ref_function):
     LMN_max = 1
     
     # Unpack state
+    y = np.squeeze(y)
     pos = y[0:3]
     vel = y[3:6]
     att = y[6:9]
@@ -294,10 +356,17 @@ def state_feedback(ref,x):
     MOI = np.diag([0.01, 0.01, 0.02])
     
     # Unpack state
-    pos  = x[0:3]
-    vel  = x[3:6]
-    att  = x[6:9]
-    rate = x[9:12]
+    if type(x) is np.ndarray:
+        pos  = x[0:3]
+        vel  = x[3:6]
+        att  = x[6:9]
+        rate = x[9:12]
+        
+    elif type(x) is dict:
+        pos  = x['pos']
+        vel  = x['vel']
+        att  = x['att']
+        rate = x['rate']
     
     # Unpack reference
     ref_pos  = ref[0:3]
@@ -401,6 +470,7 @@ def state_feedback(ref,x):
 
 
 # +
+# %%time
 # Generate trajectories
 def ref_function(t):
     t = np.atleast_1d(t)
@@ -429,8 +499,12 @@ Ts = 0.01
 t_span = [0,20]
 t_eval = np.arange(t_span[0], t_span[1], Ts)
 y0 = np.zeros(12)
-sol = solve_ivp(eqn_of_motion, t_span, y0, t_eval=t_eval,
-                args=(state_feedback, ref_function))
+# sol = solve_ivp(eqn_of_motion, t_span, y0, t_eval=t_eval,
+#                 args=(state_feedback, ref_function))
+
+params = { 'mass': 1, 'J': np.array([0.01, 0.01, 0.02])}
+quadcopter = Quadcopter(params=params, reference=ref_function, control=state_feedback)
+sol = solve_ivp(quadcopter, t_span, y0, t_eval=t_eval)
 
 # Unpack solution
 t = sol.t
