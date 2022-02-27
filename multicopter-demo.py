@@ -686,6 +686,12 @@ def create_quadcopter(vis):
 
 vis.delete()
 drone = create_quadcopter(vis)
+
+# Set camera
+T = tf.rotation_matrix(np.deg2rad(45), [0,0,1])
+T[0:3,3] = [3,3,2]
+vis['/Cameras'].set_transform(T)
+
 vis.jupyter_cell()
 # -
 
