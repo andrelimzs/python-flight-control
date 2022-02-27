@@ -514,35 +514,29 @@ def state_feedback(ref,x):
 # Generate trajectories
 def ref_function(t):
     t = np.atleast_1d(t)
-    N = t.shape[0]
-    
-    zero = 0 * t
     nan  = np.nan * t
-    step = -1 * (t > 0).astype(int)
-    
-    sin1 = 4 * np.sin(1*t)
-    sin2 = 4 * np.sin(2*t)
-    sin3 = 1 * np.sin(0.5*t) - 2
-    
-    square1 = 4 * (np.sin(1*t) > 0).astype(int)
-    square2 = 4 * (np.sin(1*t) < 0).astype(int)
-    
-    ref_pos  = stack_squeeze( [sin1, sin2, step] )
+    zero = 0 * t
+    ref_pos  = stack_squeeze( [nan, nan, nan] )
+    # ref_pos[0] = 5*np.sin(1*t)
+    # ref_pos[1] = 5*np.sin(0.5*t)
+    ref_pos[2] = -1 * (t > 0).astype(int)
     ref_vel  = stack_squeeze( [nan, nan, nan] )
     ref_att  = stack_squeeze( [nan, nan, zero] )
+    ref_att[0] = 0.5*np.sin(2*t)
+    ref_att[1] = 0.5*np.sin(1*t)
+    # ref_att[2] = 0*np.sin(5*t)
     ref_rate = stack_squeeze( [nan, nan, nan] )
     
     return np.concatenate( [ref_pos, ref_vel, ref_att, ref_rate] )
 
 # Run Simulation
 Ts = 0.01
-t_span = [0,20]
+t_span = [0,5]
 t_eval = np.arange(t_span[0], t_span[1], Ts)
 
 # x0 = np.zeros(12)
 # sol = solve_ivp(eqn_of_motion, t_span, x0, t_eval=t_eval,
 #                 args=(state_feedback, ref_function))
-
 
 params = { 'mass': 1, 'J': np.array([0.01, 0.01, 0.02])}
 quadcopter = Quadcopter('Quaternion', params=params, reference=ref_function, control=state_feedback)
@@ -566,7 +560,10 @@ ref_att  = ref[6:9]
 ref_rate = ref[9:12]
 
 # Control input
-control_u = state_feedback(ref, state)
+control_u = np.zeros((4, len(t)))
+for i in range(len(t)):
+    x = quadcopter.unpack_state(sol.y[:,i])
+    control_u[:,i] = state_feedback(ref[:,i], x)
 T   = control_u[0]
 LMN = control_u[1:4]
 
@@ -579,30 +576,35 @@ for i in range(3):
     ax[i,0].plot(t, pos[i])
     ax[i,0].plot(t, ref_pos[i])
     
-    ax[i,1].plot(t, vel[i])
-    ax[i,1].plot(t, ref_vel[i])
+    ax[i,1].plot(t, np.rad2deg(eul[i]))
+    ax[i,1].plot(t, np.rad2deg(ref_att[i]))
 
 [ ax[i,j].grid() for i in range(3) for j in range(2) ]
 ax[0,0].set_title('Pos')
-ax[0,1].set_title('Vel')
+ax[0,1].set_title('Att')
         
 fig,ax = plt.subplots(3,2, sharex=True)
 for i in range(3):
-    ax[i,0].plot(t, np.rad2deg(eul[i]))
-    ax[i,0].plot(t, np.rad2deg(ref_att[i]))
+    ax[i,0].plot(t, vel[i])
+    ax[i,0].plot(t, ref_vel[i])
     
     ax[i,1].plot(t, np.rad2deg(rate[i]))
     ax[i,1].plot(t, np.rad2deg(ref_rate[i]))
     # ax[i,3].plot(time, LMN[i])
     
 [ ax[i,j].grid() for i in range(3) for j in range(2) ]
-ax[0,0].set_title('Att')
+ax[0,0].set_title('Vel')
 ax[0,1].set_title('Rate')
 
 # # Plot quaternion components q0 .. q3
 # fig,ax = plt.subplots(4, sharex=True)
 # for i in range(4):
-#     ax[i].plot(t, np.rad2deg(att[i]))
+#     ax[i].plot(t, att[i])
+
+fig,ax = plt.subplots(3,2, sharex=True)
+ax[0,0].plot(t, LA.norm(att, axis=0))
+
+
 # -
 
 # **Visualise**
