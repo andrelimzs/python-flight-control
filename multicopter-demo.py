@@ -478,34 +478,84 @@ def state_feedback(ref,x):
     acc_des_b = apply( rotz(-att[2]), acc_des )
     
     # =====================  Acceleration to Orientation  =====================
-    # Compute desired roll/pitch from desired acceleration
-    T_des = np.atleast_1d(LA.norm(acc_des_b, axis=0)) * mass
-    # T_des = -acc_des_b[2,:].reshape(1,-1) * mass
-    
-    # Enforce T_des shape to either (1,) or (1,N)
-    if T_des.shape[0] > 1:
-        T_des = T_des.reshape((1,-1))
+    def acc_to_att(acc_des_b):
+        # Compute desired roll/pitch from desired acceleration
+        T_des = np.atleast_1d(LA.norm(acc_des_b, axis=0)) * mass
+        # T_des = -acc_des_b[2,:].reshape(1,-1) * mass
 
-    phi_des   =  np.arcsin(acc_des_b[1] / T_des)
-    theta_des = -atan2(acc_des_b[0], -acc_des_b[2])
-    psi_des   =  np.zeros(phi_des.shape)
-    
-    if theta_des.shape[0] > 1:
-        theta_des = theta_des.reshape((1,-1))
-    
-    # Form att desired vector
-    att_des = stack_squeeze([phi_des, theta_des, psi_des])
+        # Enforce T_des shape to either (1,) or (1,N)
+        if T_des.shape[0] > 1:
+            T_des = T_des.reshape((1,-1))
+        
+        phi_des   =  np.arcsin(acc_des_b[1] / T_des)
+        theta_des = -atan2(acc_des_b[0], -acc_des_b[2])
+        psi_des   =  np.zeros(phi_des.shape)
+
+        if theta_des.shape[0] > 1:
+            theta_des = theta_des.reshape((1,-1))
+
+        # Form att desired vector
+        att_des = stack_squeeze([phi_des, theta_des, psi_des])
+        
+        return np.atleast_1d(T_des), att_des
+        
+    def acc_to_rotm(az):
+        # Form desired rotation matrix
+        edz = -az/LA.norm(az)
+        # Form the ground projected (zero roll & pitch) x-axis
+        x_vec = np.array([1.,0.,0.])
+        vx = rotz(-att[2]) @ x_vec
+        # Cross ez and vx to get the y-axis for the desired 1) acc_z and 2) heading
+        edy = np.cross(edz, vx)
+        # Finish the matrix by ey x ez
+        edx = np.cross(edy, edz)
+        
+        # Stack (3*,N) vectors into (N,3*,3) rotations
+        R_des = np.stack([ edx, edy, edz ], axis=1)
+        
+        # Let T_des be the dot(-acc_des, ez)
+        ez = -np.squeeze(eRb[:,2])
+        
+        # Let desired thrust be <acc_des, ez>
+        T_des = np.dot(acc_des_b, ez) * mass
+        
+        return np.atleast_1d(T_des), R_des
+
     
     # =============================  Rotation  =============================
-    # Attitude Subsystem
-    att_err  = ref_att + att_des - eul 
-    rate_err = ref_rate - rate
         
-    ang_acc_des  = K_att @ np.concatenate([att_err, rate_err])
-    LMN_des = MOI @ ang_acc_des
+    # Attitude Subsystem
+    def attitude_state_feedback():
+        att_err  = ref_att + att_des - eul 
+        rate_err = ref_rate - rate
+
+        ang_acc_des  = K_att @ np.concatenate([att_err, rate_err])
+        LMN_des = MOI @ ang_acc_des + np.cross(rate, MOI@rate) 
+
+        return LMN_des
+    
+    def se3_geometric_control():
+        # [PLACEHOLDER] Gains
+        kR = 1000
+        kOmega = 300
+        
+        eR = 0.5 * veemap(R_des.T @ eRb - eRb.T @ R_des)
+        eOmega = rate - eRb.T @ R_des @ ref_rate
+        
+        LMN_des = MOI @ (-kR*eR - kOmega*eOmega) \
+                + np.cross(rate, MOI@rate) 
+        
+        return LMN_des
+    
+    # T_des, att_des = acc_to_att(acc_des_b)
+    # LMN_des = attitude_state_feedback()
+    
+    T_des, R_des = acc_to_rotm(acc_des_b)
+    if disable_vel[0:2].all():
+        R_des = eul2rotm(ref_att)
+    LMN_des = se3_geometric_control()
     
     control_u = np.concatenate([T_des, LMN_des])
-    
     return control_u
 
 
