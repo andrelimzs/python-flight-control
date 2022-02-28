@@ -22,12 +22,11 @@ import control
 
 import time
 import meshcat
-import meshcat.geometry as g
-import meshcat.transformations as tf
 
 from Quadcopter import *
 from Controller import *
 from Utils import *
+from Visualise import *
 
 # Create a new visualizer
 vis = meshcat.Visualizer()
@@ -135,59 +134,21 @@ for i in range(3):
 [ ax[i,j].grid() for i in range(3) for j in range(2) ]
 ax[0,0].set_title('Vel')
 ax[0,1].set_title('Rate')
-
-
 # -
 
-# **Visualise**
+# ### Visualise
 
 # + tags=[]
-def create_quadcopter(vis):
-    arm_length = 0.25
-    rotor_radius = 0.125
-
-    # Arms
-    vis['drone']['left_arm'].set_object(g.Box([2*arm_length, 0.05, 0.05]))
-    vis['drone']['left_arm'].set_transform(tf.rotation_matrix(np.deg2rad(45), [0,0,1]))
-    vis['drone']['right_arm'].set_object(g.Box([2*arm_length, 0.05, 0.05]))
-    vis['drone']['right_arm'].set_transform(tf.rotation_matrix(np.deg2rad(-45), [0,0,1]))
-
-    # Rotors
-    for i in range(1,5):
-        theta = np.deg2rad(45 + 90*i)
-        offset = np.array([arm_length * np.sin(theta), arm_length * np.cos(theta), 0.05])
-
-        # Compute transformation
-        T = tf.rotation_matrix(np.deg2rad(90), [1,0,0])
-        T[0:3,3] = offset
-
-        vis['drone'][f'rotor{i}'].set_object(g.Cylinder(0.01, rotor_radius))
-        vis['drone'][f'rotor{i}'].set_transform(T)
-        
-    return vis['drone']
-
+# Reinitialise Meshcat scene
 vis.delete()
 drone = create_quadcopter(vis)
+move_camera(vis, axis=[0,0,1], angle=45, offset=[3,3,1])
 
-# Set camera
-T = tf.rotation_matrix(np.deg2rad(45), [0,0,1])
-T[0:3,3] = [3,3,2]
-vis['/Cameras'].set_transform(T)
-
+# Animate and save scene, then render as static snapshot
 anim = meshcat.animation.Animation()
-
-for i in range(0, len(t), 3):   
+for i in range(0, len(t), 10):   
     with anim.at_frame(vis, i) as frame:
-        # Convert NED to ENU
-        pos_enu = np.array([1,-1,-1]) * state['pos'][:,i]
-        att_enu = np.array([1,-1,-1]) * state['eul'][:,i]
-
-        # Form homogeneous transformation
-        T = tf.euler_matrix(*att_enu)
-        T[0:3,3] = pos_enu
-
-        # Apply
-        frame.set_transform(T)
+        frame.set_transform(homogeneous_transform_NED(state['eul'][:,i], state['pos'][:,i]))
 
 vis.set_animation(anim)
 vis.render_static()
