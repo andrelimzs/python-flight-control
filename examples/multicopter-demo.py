@@ -14,6 +14,9 @@
 # ---
 
 # +
+import sys
+sys.path.append("..")
+
 import numpy as np
 import numpy.linalg as LA
 from scipy.integrate import solve_ivp
@@ -23,10 +26,10 @@ import control
 import time
 import meshcat
 
-from Quadcopter import *
-from Controller import *
-from Utils import *
-from Visualise import *
+from flightcontrol.Quadcopter import *
+from flightcontrol.Controller import *
+from flightcontrol.Utils import *
+from flightcontrol.Visualise import *
 
 # Create a new visualizer
 vis = meshcat.Visualizer()

@@ -96,36 +96,35 @@ def stack_squeeze(arr) -> np.ndarray:
     return np.squeeze(np.stack( arr ))
 
 def eul2rotm(eul):
+    """Euler Angle to Rotation Matrix"""
     return R.from_euler('ZYX', eul[::-1].T).as_matrix()
 
-def quat2rotm(quat) -> np.ndarray:
-    """Rotation matrix from quaternion
-    (4,N) --> (N,3,3) """
-    q0 = quat[0].reshape(-1,1,1)
-    q1 = quat[1].reshape(-1,1,1)
-    q2 = quat[2].reshape(-1,1,1)
-    q3 = quat[3].reshape(-1,1,1)
-    
-    M = np.block([ [ q0**2 + q1**2 - q2**2 - q3**2,
-                     2*(q1*q2 - q0*q3),
-                     2*(q1*q3 + q0*q2) ], 
-                   [ 2*(q1*q2 + q0*q3),
-                     q0**2 + q2**2 - q1**2 - q3**2,
-                     2*(q2*q3 - q0*q1) ],
-                   [ 2*(q1*q3 - q0*q2),
-                     2*(q2*q3 + q0*q1),
-                     q0**2 + q3**2 - q1**2 - q2**2 ] ])
-    
-    return np.squeeze(M)
+def eul2quat(eul):
+    """Euler Angle to Quaternion"""
+    quat = R.from_euler('ZYX', eul[::-1].T).as_quat()
+    # Rearrange from (x,y,z,w) to (w,x,y,z)
+    return np.concatenate([quat[3:4], quat[0:3]])
 
 def quat2eul(quat) -> np.ndarray:
-    """ Euler Angles from Quaternion
+    """Euler Angles from Quaternion
     (4,N) --> (3,N) """
     # Convert from (w,x,y,z) to (x,y,z,w)
     quat_scipy = np.concatenate([quat[1:4], quat[0:1]])
     eul = R.from_quat(quat_scipy.T).as_euler('ZYX').T
     return np.squeeze(eul[::-1])
 
+def quat2rotm(quat) -> np.ndarray:
+    """Rotation matrix from quaternion
+    (4,N) --> (N,3,3) """
+    # Convert from (w,x,y,z) to (x,y,z,w)
+    quat_scipy = np.concatenate([quat[1:4], quat[0:1]])
+    return R.from_quat(quat_scipy.T).as_matrix()
+
 def rotm2eul(rotm) -> np.ndarray:
     eul = R.from_matrix(rotm).as_euler('ZYX')
     return np.squeeze(eul[::-1])
+
+def rotm2quat(rotm) -> np.ndarray:
+    quat = R.from_matrix(rotm).as_quat()
+    # Rearrange from (x,y,z,w) to (w,x,y,z)
+    return np.concatenate([quat[3:4], quat[0:3]])
