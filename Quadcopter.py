@@ -126,13 +126,13 @@ class DefaultAero:
 
 
 class Quadcopter:
-    def __init__(self, rotationType='Euler', params=None, reference=None, control=None, rotor=None, aero=None):
+    def __init__(self, params, reference, control, rotationType='Euler', rotor=None, aero=None):
         # Assign values, with defaults
-        self.reference = reference if reference else DefaultReference
-        self.control = control if control else StateFeedbackControl
+        self.params = params
+        self.reference = reference
+        self.control = control
         self.rotor = rotor if rotor else DefaultRotor(30,1)
         self.aero = aero if aero else DefaultAero()
-        self.params = params if params else DefaultParams()
         
         self.translation = Translation()
         # Choose rotational dynamics
@@ -169,7 +169,7 @@ class Quadcopter:
         
         return x
         
-    def generate_x0(self):
+    def x0(self):
         """Generate an initial state vector"""
         x0 = np.concatenate([ self.translation.x0,
                               self.rotation.x0,
