@@ -1,6 +1,6 @@
 import numpy as np
 import numpy.linalg as LA
-from Utils import *
+from flightcontrol.Utils import *
 
 class Controller:
     """
