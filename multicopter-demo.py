@@ -31,10 +31,23 @@ from Visualise import *
 # Create a new visualizer
 vis = meshcat.Visualizer()
 
-# + tags=[]
 # Specify physical parameters
 params = { 'mass': 1, 'J': np.array([0.01, 0.01, 0.02])}
+# -
 
+# ### Compute Control Law
+# For the state-space system
+#
+# $ \dot{x} = Ax + Bu $
+#
+# Find the control law $u = -Kx$ \
+# such that the closed-loop system
+#
+# $ \dot{x} = (A-BK) x $
+#
+# has the desired response
+
+# + tags=[]
 # Compute state feedback
 z3 = np.zeros((3,3))
 I3 = np.eye(3)
@@ -55,8 +68,14 @@ kRotation = control.place(A, B, p)
 controller = Controller(kTranslation, kRotation)
 
 
+# -
+
+# ### Generate Trajectory and Run Simulation
+# Specify the trajectory as a function of time in `ref_function`
+
 # +
 # %%time
+
 # Generate trajectory
 def ref_function(t):
     t = np.atleast_1d(t)
@@ -64,19 +83,17 @@ def ref_function(t):
     zero = 0 * t
     
     ref = {}
-    ref['pos']  = stack_squeeze( [nan, nan, nan] )
+    ref['pos']  = np.stack(np.squeeze( [nan, nan, nan ] ))
+    ref['vel']  = np.stack(np.squeeze( [nan, nan, nan ] ))
+    ref['att']  = np.stack(np.squeeze( [nan, nan, zero] ))
+    ref['rate'] = np.stack(np.squeeze( [nan, nan, nan ] ))
+    
     ref['pos'][0] = 5*np.sin(1*t)
     ref['pos'][1] = 5*np.sin(0.5*t)
     ref['pos'][2] = -1 * (t > 0).astype(int)
-    
-    ref['vel']  = stack_squeeze( [nan, nan, nan] )
-    
-    ref['att']  = stack_squeeze( [nan, nan, zero] )
     # ref['att'][0] = 0.5*np.sin(2*t)
     # ref['att'][1] = 0.5*np.sin(1*t)
     # ref['att'][2] = 0*np.sin(5*t)
-    
-    ref['rate'] = stack_squeeze( [nan, nan, nan] )
     
     return ref
 
@@ -86,11 +103,10 @@ t_span = [0,20]
 t_eval = np.arange(t_span[0], t_span[1], Ts)
 
 # Instantiate Quadcopter
-quadcopter = Quadcopter('Quaternion', params=params, reference=ref_function, control=controller)
+quadcopter = Quadcopter(params, ref_function, controller, 'Quaternion')
 
 # Run simulation (solve ODE)
-x0 = quadcopter.generate_x0()
-sol = solve_ivp(quadcopter, t_span, x0, t_eval=t_eval)
+sol = solve_ivp(quadcopter, t_span, quadcopter.x0(), t_eval=t_eval)
 
 # Unpack state & reference
 t = sol.t
@@ -121,7 +137,7 @@ for i in range(3):
 [ ax[i,j].grid() for i in range(3) for j in range(2) ]
 ax[0,0].set_title('Pos')
 ax[0,1].set_title('Att')
-        
+
 fig,ax = plt.subplots(3,2, sharex=True)
 for i in range(3):
     ax[i,0].plot(t, state['vel'][i])
