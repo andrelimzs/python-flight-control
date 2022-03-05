@@ -4,6 +4,8 @@
 
 A demonstration of flight control algorithms, and associated physics models and simulation.
 
+![overview_gif](https://github.com/andrelimzs/python-flight-control/blob/test-latex-readme/docs/gifs/overview.gif?raw=true)
+
 
 
 ## Installation
