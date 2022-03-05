@@ -68,7 +68,7 @@ p = np.repeat([-10,-12], 3)
 kRotation = control.place(A, B, p)
 
 # Instantiate Controller
-controller = Controller(kTranslation, kRotation)
+controller = PIDController(kTranslation, kRotation)
 
 
 # -
