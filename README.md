@@ -36,22 +36,22 @@ The model is written as a set of modular ODEs, allowing existing modules to be c
 
 python-flight-control contains the following default modules:
 
-- `Translation`
+- `Translation`  
   Responsible for the integration of acceleration into velocity and position.
-- `EulerRotation` or `QuaternionRotation`
+- `EulerRotation` or `QuaternionRotation`  
   Responsible for the integration of angular acceleration into body rates and either Euler angles or Quaternions.
-- `DefaultRotor`
+- `DefaultRotor`  
   Models the motor, ESC, propeller subsystem. This is a direct passthrough with no dynamics.
-- `DefaultAero`
+- `DefaultAero `   
   Models aerodynamic effects on the quadcopter. This is a placeholder returning zero force/moment.
 
 ### Adding New Models
 
 1. Create a new class
-2. Add class variable `num_states`
+2. Add class variable `num_states`  
    Which contains the number of states it needs
-3. Add class variable `x0`
-   Which contains a default initial state vector
+3. Add class variable `x0`  
+   Which contains a default initial state vector  
    (This can be all zeros. An exception would be a quaternion, which should be initialised to [1,0,0,0].)
 4. Add derivative calculation to `__call__(self, params, ...)` method
 
