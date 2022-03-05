@@ -1,6 +1,6 @@
 # python-flight-control
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/andrelimzs/python-flight-control/structure-as-package?labpath=examples%2Fmulticopter-demo.ipynb)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/andrelimzs/python-flight-control/main?labpath=examples%2Fmulticopter-demo.ipynb)
 
 A demonstration of flight control algorithms, and associated physics models and simulation.
 
