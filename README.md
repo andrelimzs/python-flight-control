@@ -4,7 +4,7 @@
 
 A demonstration of flight control algorithms, and associated physics models and simulation.
 
-![overview_gif](https://github.com/andrelimzs/python-flight-control/blob/test-latex-readme/docs/gifs/overview.gif?raw=true)
+![overview_gif](https://github.com/andrelimzs/python-flight-control/blob/main/docs/gifs/overview.gif?raw=true)
 
 
 
@@ -75,27 +75,27 @@ Non-unit quaternions allows the use of general ODE solvers, instead of special g
 
 The relationship between angular velocity ω and the rotation *R* is
 
-![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/53afcbfcaa35e483e6ee8a74a9e407eb26851f46/docs/equations/eqn_1.svg)
+![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/main/docs/equations/eqn_1.svg)
 
 Which simplifies to
 
-![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/53afcbfcaa35e483e6ee8a74a9e407eb26851f46/docs/equations/eqn_2.svg)
+![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/main/docs/equations/eqn_2.svg)
 
-![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/53afcbfcaa35e483e6ee8a74a9e407eb26851f46/docs/equations/eqn_3.svg)
+![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/main/docs/equations/eqn_3.svg)
 
 To get q dot  from ω
 
-![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/53afcbfcaa35e483e6ee8a74a9e407eb26851f46/docs/equations/eqn_4.svg)
+![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/main/docs/equations/eqn_4.svg)
 
-![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/53afcbfcaa35e483e6ee8a74a9e407eb26851f46/docs/equations/eqn_5.svg)
+![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/main/docs/equations/eqn_5.svg)
 
 ### Final Equation
 
 The final differential equation is:
 
-![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/53afcbfcaa35e483e6ee8a74a9e407eb26851f46/docs/equations/eqn_6.svg)
+![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/main/docs/equations/eqn_6.svg)
 
-![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/53afcbfcaa35e483e6ee8a74a9e407eb26851f46/docs/equations/eqn_7.svg)
+![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/main/docs/equations/eqn_7.svg)
 
 which is used in the ODE solver.
 
