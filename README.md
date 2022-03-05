@@ -71,7 +71,7 @@ Non-unit quaternions allows the use of general ODE solvers, instead of special g
 
 ### Derivation 
 
-The relationship between angular velocity $\omega$ and the rotation $R$ is
+The relationship between angular velocity ω and the rotation *R* is
 
 ![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/53afcbfcaa35e483e6ee8a74a9e407eb26851f46/docs/equations/eqn_1.svg)
 
@@ -81,7 +81,7 @@ Which simplifies to
 
 ![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/53afcbfcaa35e483e6ee8a74a9e407eb26851f46/docs/equations/eqn_3.svg)
 
-To get $\dot{q}$ from $\omega$
+To get q dot  from ω
 
 ![eqn_1](https://raw.githubusercontent.com/andrelimzs/python-flight-control/53afcbfcaa35e483e6ee8a74a9e407eb26851f46/docs/equations/eqn_4.svg)
 
