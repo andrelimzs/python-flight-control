@@ -1,197 +1,247 @@
 import numpy as np
-from flightcontrol.Utils import *
+import numpy.linalg as LA
+from Utils import *
 
-class Translation:
-    num_states = 6
-    x0 = np.zeros(6)
-    def __call__(self, params, T, LMN, x):
-        # Form thrust vector (in body frame)
-        thrust = np.concatenate([0*T, 0*T, -T])
-
-        # Position
-        d_pos = x['vel']
-
-        # Velocity
-        d_vel = apply(x['eRb'], thrust) / params['mass']
-        d_vel[2] += 9.81
-
-        return np.concatenate([d_pos, d_vel])
-
-
-class EulerRotation:
-    num_states = 3
-    x0 = np.zeros(6)
-    def body_rate_to_euler_dot(self, eul):
-        """ Compute the transformation to go from body rates pqr to euler derivative
-        for either a vector (3,) -> (3,3) or a sequence of vectors (3,N) -> (N,3,3) """
-        # Align eul to (3,N)
-        if eul.shape[0] != 3:
-            eul = eul.T
-
-        # Get length N
-        N = eul.shape[1] if eul.ndim > 1 else 1
-
-        # Precompute the sin and cos terms
-        one = np.ones_like(eul[0]).reshape(-1,1,1)
-        zero = np.zeros_like(eul[0]).reshape(-1,1,1)
-        s2 = np.sin(eul[2]).reshape(-1,1,1)
-        c2 = np.cos(eul[2]).reshape(-1,1,1)
-        t1 = np.tan(eul[1]).reshape(-1,1,1)
-        sec1 = 1 / np.cos(eul[1]).reshape(-1,1,1)
-
-        # Form rotation matrix (N,3,3)
-        M = np.block([ [one,  s2*t1,   c2*t1],
-                       [zero,   c2,     -s2],
-                       [zero, s2*sec1, c2*sec1]
-                     ])
-        return np.squeeze(M)
-
-    def __call__(self, params, T, LMN, x):
-        # Convert body-axis rates pqr to euler derivative
-        eul_dot = apply(self.body_rate_to_euler_dot(x['att']), x['rate'])
-        
-        # Attitude
-        d_att = eul_dot
-
-        # Angular Rate
-        euler_cross_product = apply(skew(x['rate']) @ params['J'], x['rate'])
-        d_rate = 1 / params['J'] * (LMN - euler_cross_product)
-        
-        return np.concatenate([d_att, d_rate])
-
-
-class QuaternionRotation:
-    num_states = 4
-    x0 = np.array([1.,0.,0.,0.,0.,0.,0.])
-    def __init__(self, K=0.1):
-        # Renormalisation gain
-        self.K = K
-        
-    def make_Omega(self, omega):
-        w1 = omega[0].reshape(-1,1,1)
-        w2 = omega[1].reshape(-1,1,1)
-        w3 = omega[2].reshape(-1,1,1)
-        z  = np.zeros_like(w1)
-        Omega = np.block([ [z,  -w1, -w2, -w3],
-                           [w1,  z,   w3, -w2],
-                           [w2, -w3,  z,   w1],
-                           [w3,  w2, -w1,  z ] ])
-        return np.squeeze(Omega)
-        
-    def __call__(self, params, T, LMN, x):
-        q = x['att']
-        
-        # Use quaternion derivative formulation of \dot{q} = 0.5 * Omega * q
-        Omega = self.make_Omega(x['rate'])
-        d_quat = 0.5 * apply(Omega, q)
-        
-        # Gain to limit norm drift
-        c = self.K * (np.ones_like(q) - dot_2d(q,q))
-        d_quat += c * q
-        
-        # Angular Rate
-        euler_cross_product = apply(skew(x['rate']) @ params['J'], x['rate'])
-        d_rate = 1 / params['J'] * (LMN - euler_cross_product)
-        
-        return np.concatenate([d_quat, d_rate])
-
-
-class DefaultRotor:
-    num_states = 0
-    x0 = np.zeros(0)
-    def __init__(self, T_max, LMN_max):
-        self.T_max = T_max
-        self.LMN_max = LMN_max
-        
-    def __call__(self, params, u, x):
-        T = np.atleast_1d(u[0])
-        LMN = u[1:4]
-        
-        # Saturate the Thrust and Torques
-        T = np.clip(T, 0, self.T_max)
-        LMN = np.clip(LMN, -self.LMN_max, self.LMN_max)
-        
-        return T, LMN
-
-
-class DefaultAero:
-    num_states = 0
-    x0 = np.zeros(0)
-    def __call__(self, params, u, x):
-        d_pos = np.zeros_like(x['pos'])
-        d_vel = np.zeros_like(x['vel'])
-        d_att = np.zeros_like(x['att'])
-        d_rate = np.zeros_like(x['rate'])
-        return np.concatenate([d_pos, d_vel, d_att, d_rate])
-
+from math import atan2, asin
 
 class QuadVTOL:
-    def __init__(self, params, reference, control, rotationType='Euler', rotor=None, aero=None):
-        # Assign values, with defaults
-        self.params = params
-        self.reference = reference
-        self.control = control
-        self.rotor = rotor if rotor else DefaultRotor(30,1)
-        self.aero = aero if aero else DefaultAero()
-        
-        self.translation = Translation()
-        # Choose rotational dynamics
-        if rotationType == 'Quaternion':
-            self.rotation = QuaternionRotation()
-            self.att2rotm = quat2rotm
-            self.att2eul  = quat2eul
+    """
+    Simulate dynamics for a tiltrotor VTOL
+    
+    State : [pos, vel, rot, pqr]
+    Input : [elevons, rpm, rotor_angle]
+
+    """
+    def __init__(self):
+        self.n = 21
+        # Physical parameters
+        self.g = 9.81 # [m/s^2]
+        self.e3 = np.array([0.,0.,1.]).reshape(3,1)
+        self.mass = 0.771 # [kg]
+        self.J = np.array([
+            [0.0165,    0.0,    4.8e-5], 
+            [0.0,       0.0128, 0.0],
+            [4.8e-5,    0.0,    0.0282]
+        ]) # [kg m^2]
+        self.J_inv = LA.inv(self.J)
+        self.S = 0.2589 # [m^2]
+        self.span = 1.4224 # [m]
+        self.chord = 0.3305 # [m]
+        self.rho = 1.2682 # [kg/m^3]
+        self.es = 0.9 # []
+        self.rotor_diameter = 0.18 # [0.18 m]
+
+        # Aerodynamic parameters
+        self.set_aero_params()
+
+        # Rotor parameters
+        self.set_rotor_params()
+
+    def set_aero_params(self):
+        self.CL0 = 0.005
+        self.CD0 = 0.0022
+        self.CM0 = 0.0
+        self.CLa = 2.819
+        self.CDa = 0.003
+        self.CMa = -0.185
+        self.CLq = 3.242
+        self.CDq = 0.0
+        self.CMq = -1.093
+        self.CDp = 0.0
+        self.CLdE = 0.2
+        self.CDdE = 0.005
+        self.CMdE = -0.387
+
+        self.alpha0 = 0.47
+
+        self.CY0 = 0.0
+        self.CL0 = 0.0
+        self.CN0 = 0.0
+        self.CYb = -0.318
+        self.CLb = -0.032
+        self.CNb = 0.112
+        self.CYp = 0.078
+        self.CLp = -0.207
+        self.CNp = -0.053
+        self.CYr = 0.288
+        self.CLr = 0.036
+        self.CNr = -0.104
+        self.CYdE = 0.000536
+        self.CLdE = 0.018
+        self.CNdE = -0.00328
+
+    def set_rotor_params(self):
+        self.CT0 = 0.1167
+        self.CT1 = 0.0144
+        self.CT2 = -0.1480
+        self.CQ0 = 0.0088
+        self.CQ1 = 0.0129
+        self.CQ2 = -0.0216
+        self.rotor_pos = np.array([
+            [0.1, 0.1, -0.22],
+            [0.18, 0.18, 0],
+            [0, 0, 0]
+        ])
+        self.k_tilt = 100
+
+    def CL(self, alpha):
+        return 0
+
+    def CD(self, alpha):
+        return 0
+
+    def aero_forces_and_moments(self, v_a, pqr, dE):
+        b = self.span
+        c = self.chord
+        S = self.S
+
+        # Compute aerodynamic state
+        alpha = atan2(v_a[2].item(), v_a[0].item())
+        if LA.norm(v_a) > 1e-5:
+            beta = asin(v_a[1].item() / LA.norm(v_a))
         else:
-            self.rotation = EulerRotation()
-            self.att2rotm = eul2rotm
-            self.att2eul  = lambda x: x
+            beta = 0.0
+        Ra = np.array([
+            [np.cos(alpha), 0,  -np.sin(alpha) ],
+            [0,             1,  0              ],
+            [np.sin(alpha), 0,  np.cos(alpha)  ]
+        ])
+
+        # Forces
+        F0 = 0.5 * self.rho * np.abs(v_a)**2 * S * Ra @ np.array([
+            -c * (self.CD(alpha)),
+             b * (self.CY0 + self.CYb * beta),
+            -c * (self.CL(alpha))
+        ]).reshape(3,1)
+
+        F_omega = 0.4 * self.rho * np.abs(v_a) * S * Ra @ np.array([
+            [0,                 c**2 * self.CDq,    0               ],
+            [b**2 * self.CYp,   0,                  b**2*self.CYr   ],
+            [0,                 c**2 * self.CLq,    0               ]
+        ])
+
+        F_dE = 0.5 * self.rho * np.abs(v_a)**2 * S * Ra @ np.array([
+            [ c*self.CDdE, -c*self.CDdE ],
+            [ b*self.CYdE,  b*self.CYdE ],
+            [ c*self.CLdE, -c*self.CLdE ]
+        ])
         
-        # Calculate the index to unpack each state
-        self.state_vec = {'pos' : range(0,3),
-                          'vel' : range(3,6)}
-        i = 6; j = i + self.rotation.num_states
-        self.state_vec['att']   = range(i,j)
-        i = j; j = i + 3
-        self.state_vec['rate']   = range(i,j)
-        i = j; j = i + self.rotor.num_states
-        self.state_vec['rotor'] = range(i,j)
-        i = j; j = i + self.aero.num_states
-        self.state_vec['aero']  = range(i,j)
+        # Moments
+        M0 = 0.5 * self.rho * np.abs(v_a)**2 * S * Ra @ np.array([
+            b * (self.CL0 + self.CLb * beta),
+            c * (self.CM0 + self.CMa * alpha),
+            b * (self.CN0 + self.CNb * beta)
+        ]).reshape(3,1)
+
+        M_omega = 0.4 * self.rho * np.abs(v_a) * S * Ra @ np.array([
+            [b**2 * self.CLp,   0,                  b**2 * self.CLr ],
+            [0,                 c**2 * self.CMq,    0               ],
+            [b**2 * self.CNp,   0,                  b**2 * self.CNr ]
+        ])
+
+        M_dE = 0.5 * self.rho * np.abs(v_a)**2 * S * Ra @ np.array([
+            [ self.CLdE, self.CLdE ],
+            [-self.CMdE, self.CMdE ],
+            [ self.CNdE, self.CNdE ]
+        ])
+
+        F_aero = F0 + F_omega @ pqr + F_dE @ dE
+        M_aero = M0 + M_omega @ pqr + M_dE @ dE
+
+        return F_aero, M_aero
+
+    def rotor_forces_and_moments(self, v_a, tet_r, rpm):
+        # Rot matrix from rotor to body frame
+        tet_r = tet_r.ravel()
+        rotor_R_body = np.array([
+            [np.cos(tet_r[0]),  np.cos(tet_r[1]),   np.cos(tet_r[2])],
+            [0,                 0,                  0],
+            [-np.sin(tet_r[0]), -np.sin(tet_r[1]),  -np.sin(tet_r[2])]
+        ])
+
+        D = self.rotor_diameter
+        # Airspeed through rotor i
+        # Tranpose to get (3,1) to match rpm dim
+        Va = (v_a.T @ rotor_R_body).T
+
+        # rpm (3,1) --> T (3,1) / Q (3,1)
+        T = ((self.rho * D**4 * self.CT0) /(4*np.pi**2) * rpm**2 
+            + (self.rho * D**3 * self.CT1)/(2*np.pi) * Va * rpm**2
+            + (self.rho * D**2 * self.CT2) * Va**2
+        )
+        Q = ((self.rho * D**5 * self.CQ0) /(4*np.pi**2) * rpm**2 
+            + (self.rho * D**4 * self.CQ1)/(2*np.pi) * Va * rpm**2
+            + (self.rho * D**3 * self.CQ2) * Va**2
+        )
+        rotor_force = rotor_R_body @ np.diag(T.ravel())
+        rotor_moment = rotor_R_body @ np.diag(Q.ravel()) + np.cross(self.rotor_pos, rotor_force, axisa=0, axisb=0, axisc=0)
         
-    def unpack_state(self, y):
-        """Unpack y (np.ndarray) into state (dict)"""
-        y = np.squeeze(y)
-        states = ['pos','vel','att','rate','rotor','aero']
-        x = { s : y[self.state_vec[s]] for s in states }
+        # Sum along second axis to get total force/moment
+        return rotor_force.sum(axis=-1, keepdims=True), rotor_moment.sum(axis=-1, keepdims=True)
+
+    def __call__(self, t, y, u):
+        """ODE function
         
-        # Compute certain useful values
-        x['eRb'] = self.att2rotm(x['att'])
-        x['eul'] = self.att2eul(x['att'])
+        If vectorized, shape is (n,k), otherwise it's (n,)
+        For now, assumed not vectorized    
+        """
+
+        dydt = np.zeros(self.n)
+
+        """Unpack"""
+        # State
+        pos = y[0:3]
+        vel = y[3:6]
+        R = y[6:15].reshape(3,3)
+        pqr = y[15:18]
+        tet_r = y[18:21]
+
+        # Control
+        u = u.reshape(8,1)
+        dE = u[0:2]
+        rpm = u[2:5]
+        tet_c = u[5:8]
         
-        return x
-        
-    def x0(self):
-        """Generate an initial state vector"""
-        x0 = np.concatenate([ self.translation.x0,
-                              self.rotation.x0,
-                              self.rotor.x0,
-                              self.aero.x0 ])
-        return x0
-        
-    def __call__(self, t, y):
-        """ODE function"""
-        state = self.unpack_state(y)
-        
-        # Execute trajectory generation and control law
-        ref = self.reference(t)
-        u = self.control(ref, state)
-        
-        # Simulate rotor, translation and rotation
-        T,LMN = self.rotor(self.params, u, state)
-        d_translation = self.translation(self.params, T, LMN, state)
-        d_rotation = self.rotation(self.params, T, LMN, state)
-        dydt = np.concatenate([d_translation, d_rotation])
-        
-        # Simulate Aerodynamics
-        dydt += self.aero(self.params, u, state)
+        omega_skew = skew(pqr)
+
+        """Aerodynamics"""
+        v_wind = np.zeros((3,1))
+        v_a = vel - R.T @ v_wind
+        F_aero, M_aero = self.aero_forces_and_moments(v_a, pqr, dE)
+
+        """Rotor"""
+        F_rotor, M_rotor = self.rotor_forces_and_moments(v_a, tet_c, rpm)
+
+        """Compute Derivatives"""
+        # Position
+        dydt[0:3] = (R @ vel).ravel()
+
+        # Velocity
+        dydt[3:6] = (
+            omega_skew @ vel + self.g*R.T@self.e3 + (F_aero + F_rotor) / self.mass
+        ).ravel()
+
+        # Rotation
+        dydt[6:15] = (R @ omega_skew).ravel()
+
+        # Body Rate
+        dydt[15:18] = (
+            -self.J_inv @ omega_skew @ self.J @ pqr + self.J_inv @ (M_aero + M_rotor)
+        ).ravel()
+
+        # Tilt Servo
+        dydt[18:21] = (self.k_tilt * (tet_c - tet_r)).ravel()
         
         return dydt
+
+    
+if __name__ == "__main__":
+    dynamics = QuadVTOL()
+
+    x0 = np.array([
+        0,0,0, 0,0,0, 1,0,0, 0,1,0, 0,0,1, 0,0,0, 0,0,0
+    ]).reshape(-1,1)
+    u = np.array([
+        0,0, 1,1,1, 0,0,0
+    ])
+    dynamics(0, x0, u)
