@@ -1,8 +1,13 @@
 import numpy as np
 import numpy.linalg as LA
 from Utils import *
+import math
+from math import atan2, asin, exp, sin, cos, pi
 
-from math import atan2, asin
+from scipy.integrate import solve_ivp
+from functools import partial
+
+sign = lambda x: math.copysign(1, x)
 
 class QuadVTOL:
     """
@@ -29,6 +34,7 @@ class QuadVTOL:
         self.chord = 0.3305 # [m]
         self.rho = 1.2682 # [kg/m^3]
         self.es = 0.9 # []
+        self.AR = self.span**2 / self.chord # TODO Get actual values
         self.rotor_diameter = 0.18 # [0.18 m]
 
         # Aerodynamic parameters
@@ -53,6 +59,7 @@ class QuadVTOL:
         self.CMdE = -0.387
 
         self.alpha0 = 0.47
+        self.sigma_d = 50
 
         self.CY0 = 0.0
         self.CL0 = 0.0
@@ -81,14 +88,22 @@ class QuadVTOL:
             [0.1, 0.1, -0.22],
             [0.18, 0.18, 0],
             [0, 0, 0]
-        ])
-        self.k_tilt = 100
+        ]) # TODO Get actual values
+        self.k_tilt = 100 # TODO Get actual values
+
+    def compute_sigma(self, alpha):
+        d = self.sigma_d
+        return (
+            (1 + exp(-d*(alpha - self.alpha0)) + exp(d*(alpha - self.alpha0))) /
+            (1 + exp(-d*(alpha - self.alpha0))) / (1 + exp(d*(alpha - self.alpha0)))
+        )
 
     def CL(self, alpha):
-        return 0
+        sigma = self.compute_sigma(alpha)
+        return (1 - sigma) * (self.CL0 + self.CLa * alpha) + sigma*(2*sign(alpha) * sin(alpha)**2 * cos(alpha))
 
     def CD(self, alpha):
-        return 0
+        return self.CDp + (self.CL0 + self.CLa * alpha)**2 / pi/self.es/self.AR
 
     def aero_forces_and_moments(self, v_a, pqr, dE):
         b = self.span
