@@ -246,6 +246,57 @@ class QuadVTOL:
         
         return dydt
 
+class PID():
+    def __init__(self):
+        self.vel_err_int = 0
+        self.vel_err_prev = 0
+
+    def __call__(self, ref, state):
+        m = 0.771
+        g = 9.81
+
+        # Unpack state
+        pos = y[0:3]
+        vel = y[3:6]
+        R = y[6:15].reshape(3,3)
+        pqr = y[15:18]
+        tet_r = y[18:21]
+
+        # Unpack reference
+        vel_des = ref[0:3]
+        psi_des = ref[3]
+
+        # Velocity Loop (Body frame)
+        velP = 1
+        vel_err = vel_des - vel
+        acc_des = velP * vel_err
+
+        # Convert acceleration to desired thrust vector (inertial frame)
+        acc_des_I = R @ acc_des - np.array([0, 0, m*g])
+        T_des = LA.norm(acc_des_I)
+        
+        # Construct desired rotation matrix from thrust vector
+        x_des1 = np.array([cos(psi_des), sin(psi_des), 0.0])
+        z_des = -acc_des_I
+        y_des = np.cross(z_des, x_des1)
+        x_des = np.cross(y_des, z_des)
+
+        R_des = np.stack([x_des, y_des, z_des], axis=1)
+
+        # SE(3) Error
+        # From Geometric Tracking Control of a Quadrotor UAV on SE(3)
+        pqr_des = np.array([0., 0., 0.])
+        e_R = 0.5 * veemap(R_des.T @ R - R.T @ R_des)
+        e_Om = pqr - R.T @ R_des @ pqr_des
+
+        kR = 1.0
+        kV = 0.2
+        M_des = kR * e_R + kV * e_Om + np.cross(pqr, self.J @ pqr) \
+            - self.J @ hatmap(pqr)@R.T@R_des
+
+        # Convert TLMN into RPM
+        TLMN_des = np.concatenate([T_des, M_des], axis=0)
+
     
 if __name__ == "__main__":
     dynamics = QuadVTOL()
