@@ -23,7 +23,7 @@ class QuadVTOL:
         self.n = 21
         # Physical parameters
         self.g = 9.81 # [m/s^2]
-        self.e3 = np.array([0.,0.,1.]).reshape(3,1)
+        self.e3 = np.array([0.,0.,1.])
         self.mass = 0.771 # [kg]
         self.J = np.array([
             [0.0165,    0.0,    4.8e-5], 
@@ -113,7 +113,7 @@ class QuadVTOL:
         S = self.S
 
         # Compute aerodynamic state
-        alpha = atan2(v_a[2].item(), v_a[0].item())
+        alpha = atan2(v_a[2], v_a[0])
         if LA.norm(v_a) > 1e-5:
             beta = asin(v_a[1].item() / LA.norm(v_a))
         else:
@@ -129,7 +129,7 @@ class QuadVTOL:
             -c * (self.CD(alpha)),
              b * (self.CY0 + self.CYb * beta),
             -c * (self.CL(alpha))
-        ]).reshape(3,1)
+        ])
 
         F_omega = 0.4 * self.rho * np.abs(v_a) * S * Ra @ np.array([
             [0,                 c**2 * self.CDq,    0               ],
@@ -148,7 +148,7 @@ class QuadVTOL:
             b * (self.CL0 + self.CLb * beta),
             c * (self.CM0 + self.CMa * alpha),
             b * (self.CN0 + self.CNb * beta)
-        ]).reshape(3,1)
+        ])
 
         M_omega = 0.4 * self.rho * np.abs(v_a) * S * Ra @ np.array([
             [b**2 * self.CLp,   0,                  b**2 * self.CLr ],
@@ -194,7 +194,7 @@ class QuadVTOL:
         rotor_moment = rotor_R_body @ np.diag(Q.ravel()) + np.cross(self.rotor_pos, rotor_force, axisa=0, axisb=0, axisc=0)
         
         # Sum along second axis to get total force/moment
-        return rotor_force.sum(axis=-1, keepdims=True), rotor_moment.sum(axis=-1, keepdims=True)
+        return rotor_force.sum(axis=-1), rotor_moment.sum(axis=-1)
 
     def __call__(self, t, y, u):
         """ODE function
@@ -204,8 +204,6 @@ class QuadVTOL:
         """
 
         dydt = np.zeros(self.n)
-        y = y.reshape(-1,1)
-        u = u.reshape(-1,1)
 
         """Unpack"""
         # State
@@ -223,7 +221,7 @@ class QuadVTOL:
         omega_skew = skew(pqr)
 
         """Aerodynamics"""
-        v_wind = np.zeros((3,1))
+        v_wind = np.zeros((3,))
         v_a = vel - R.T @ v_wind
         F_aero, M_aero = self.aero_forces_and_moments(v_a, pqr, dE)
 
@@ -232,23 +230,19 @@ class QuadVTOL:
 
         """Compute Derivatives"""
         # Position
-        dydt[0:3] = (R @ vel).ravel()
+        dydt[0:3] = R @ vel
 
         # Velocity
-        dydt[3:6] = (
-            omega_skew @ vel + self.g*R.T@self.e3 + (F_aero + F_rotor) / self.mass
-        ).ravel()
+        dydt[3:6] = omega_skew @ vel + self.g*R.T@self.e3 + (F_aero + F_rotor) / self.mass
 
         # Rotation
         dydt[6:15] = (R @ omega_skew).ravel()
 
         # Body Rate
-        dydt[15:18] = (
-            -self.J_inv @ omega_skew @ self.J @ pqr + self.J_inv @ (M_aero + M_rotor)
-        ).ravel()
+        dydt[15:18] = -self.J_inv @ omega_skew @ self.J @ pqr + self.J_inv @ (M_aero + M_rotor)
 
         # Tilt Servo
-        dydt[18:21] = (self.k_tilt * (tet_c - tet_r)).ravel()
+        dydt[18:21] = self.k_tilt * (tet_c - tet_r)
         
         return dydt
 
@@ -277,12 +271,10 @@ if __name__ == "__main__":
     pqr = y[15:18]
     # tet_r = y[18:21]
 
-    print(f"t:{t.shape}, y:{y.shape}")
+    # f, ax = plt.subplots(3,1, sharex=True)
+    # ax[0].plot(t,vel[0])
+    # ax[1].plot(t,vel[1])
+    # ax[2].plot(t,vel[2])
 
-    f, ax = plt.subplots(3,1, sharex=True)
-    ax[0].plot(t,vel[0])
-    ax[1].plot(t,vel[1])
-    ax[2].plot(t,vel[2])
-
-    plt.show()
+    # plt.show()
 
