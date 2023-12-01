@@ -1,6 +1,8 @@
 import numpy as np
 import numpy.linalg as LA
 from Utils import *
+import matplotlib.pyplot as plt
+
 import math
 from math import atan2, asin, exp, sin, cos, pi
 
@@ -202,6 +204,8 @@ class QuadVTOL:
         """
 
         dydt = np.zeros(self.n)
+        y = y.reshape(-1,1)
+        u = u.reshape(-1,1)
 
         """Unpack"""
         # State
@@ -212,7 +216,6 @@ class QuadVTOL:
         tet_r = y[18:21]
 
         # Control
-        u = u.reshape(8,1)
         dE = u[0:2]
         rpm = u[2:5]
         tet_c = u[5:8]
@@ -255,8 +258,31 @@ if __name__ == "__main__":
 
     x0 = np.array([
         0,0,0, 0,0,0, 1,0,0, 0,1,0, 0,0,1, 0,0,0, 0,0,0
-    ]).reshape(-1,1)
+    ])
     u = np.array([
         0,0, 1,1,1, 0,0,0
     ])
-    dynamics(0, x0, u)
+    
+    sol = solve_ivp(
+        partial(dynamics, u=u),
+        t_span=[0,10],
+        y0=x0
+    )
+    t = sol.t
+    y = sol.y
+
+    pos = y[0:3]
+    vel = y[3:6]
+    # R = y[6:15].reshape(3,3)
+    pqr = y[15:18]
+    # tet_r = y[18:21]
+
+    print(f"t:{t.shape}, y:{y.shape}")
+
+    f, ax = plt.subplots(3,1, sharex=True)
+    ax[0].plot(t,vel[0])
+    ax[1].plot(t,vel[1])
+    ax[2].plot(t,vel[2])
+
+    plt.show()
+
