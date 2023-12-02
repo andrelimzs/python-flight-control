@@ -248,19 +248,38 @@ class QuadVTOL:
 
 class PID():
     def __init__(self):
-        self.vel_err_int = 0
-        self.vel_err_prev = 0
+        rotor_pos = np.array([
+            [0.1, 0.1, -0.22],
+            [0.18, 0.18, 0],
+            [0, 0, 0]
+        ])
+        x1,x2,x3 = rotor_pos[0]
+        y1,y2,_ = rotor_pos[1]
+        m = 0.771
+        g = 9.81
+        self.J = np.array([
+            [0.0165,    0.0,    4.8e-5], 
+            [0.0,       0.0128, 0.0],
+            [4.8e-5,    0.0,    0.0282]
+        ])
+        M = np.array([
+            [ 1,   1,    1,   0,        0       ],
+            [ x1,  x2,  -x3,  0,        0       ],
+            [-y1,  y2,   0,   0,        0       ],
+            [ 0,   0,    0,  -y1*m*g/3, y2*m*g/3]
+        ])
+        self.M_inv = LA.pinv(M)
 
-    def __call__(self, ref, state):
+    def run(self, ref, x):
         m = 0.771
         g = 9.81
 
         # Unpack state
-        pos = y[0:3]
-        vel = y[3:6]
-        R = y[6:15].reshape(3,3)
-        pqr = y[15:18]
-        tet_r = y[18:21]
+        pos = x[0:3]
+        vel = x[3:6]
+        R = x[6:15].reshape(3,3)
+        pqr = x[15:18]
+        tet_r = x[18:21]
 
         # Unpack reference
         vel_des = ref[0:3]
@@ -291,11 +310,14 @@ class PID():
 
         kR = 1.0
         kV = 0.2
-        M_des = kR * e_R + kV * e_Om + np.cross(pqr, self.J @ pqr) \
-            - self.J @ hatmap(pqr)@R.T@R_des
+        M_des = kR * e_R + kV * e_Om + np.cross(pqr, self.J @ pqr)
+        # - self.J @ hatmap(pqr)@R.T@pqr_des # No pqr command
 
         # Convert TLMN into RPM
-        TLMN_des = np.concatenate([T_des, M_des], axis=0)
+        TLMN_des = np.concatenate([T_des.reshape(1), M_des], axis=0)
+        u = self.M_inv @ TLMN_des
+
+        return u
 
     
 if __name__ == "__main__":
@@ -316,16 +338,14 @@ if __name__ == "__main__":
     t = sol.t
     y = sol.y
 
-    pos = y[0:3]
-    vel = y[3:6]
-    # R = y[6:15].reshape(3,3)
-    pqr = y[15:18]
-    # tet_r = y[18:21]
+    print(f"Test dynamics \t| t:{t.shape}, y:{y.shape}")
 
-    # f, ax = plt.subplots(3,1, sharex=True)
-    # ax[0].plot(t,vel[0])
-    # ax[1].plot(t,vel[1])
-    # ax[2].plot(t,vel[2])
+    controller = PID()
+    x0 = np.array([
+        0,0,0, 0,0,0, 1,0,0, 0,1,0, 0,0,1, 0,0,0, 0,0,0
+    ])
+    ref = np.array([2,0,0,0])
+    u = controller.run(ref, x0)
 
-    # plt.show()
+    print(f"Test PID \t| u:{u.shape}")
 
