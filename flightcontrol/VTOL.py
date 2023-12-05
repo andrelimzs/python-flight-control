@@ -171,9 +171,9 @@ class QuadVTOL:
         # Rot matrix from rotor to body frame
         tet_r = tet_r.ravel()
         rotor_R_body = np.array([
-            [np.cos(tet_r[0]),  np.cos(tet_r[1]),   np.cos(tet_r[2])],
-            [0,                 0,                  0],
-            [-np.sin(tet_r[0]), -np.sin(tet_r[1]),  -np.sin(tet_r[2])]
+            [np.cos(tet_r[0]),  np.cos(tet_r[1]),    0],
+            [0,                 0,                   0],
+            [-np.sin(tet_r[0]), -np.sin(tet_r[1]),  -1]
         ])
 
         D = self.rotor_diameter
