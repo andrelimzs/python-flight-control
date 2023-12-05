@@ -202,6 +202,12 @@ class QuadVTOL:
         If vectorized, shape is (n,k), otherwise it's (n,)
         For now, assumed not vectorized    
         """
+        if not np.isfinite(y).all():
+            raise ValueError("State not finite")
+
+        if not np.isfinite(u).all():
+            raise ValueError("Control input not finite")
+        
         dydt = np.zeros_like(y)
 
         """Unpack"""
@@ -218,6 +224,10 @@ class QuadVTOL:
 
         # Convert quaternion to rotation matrix
         R = quat2rotm(quat)
+
+        # Check that R is orthogonal
+        if np.abs(LA.det(R) - 1) > 1e-5:
+            raise ValueError(f"Rotation matrix det = {LA.det(R)}")
         
         omega_skew = skew(pqr)
 
