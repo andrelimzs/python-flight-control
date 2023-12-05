@@ -2,6 +2,7 @@ import numpy as np
 import numpy.linalg as LA
 from flightcontrol.Utils import *
 import matplotlib.pyplot as plt
+import control
 
 import math
 from math import atan2, asin, exp, sin, cos, pi
@@ -300,6 +301,17 @@ class PID():
             [ 0,   0,    0,  -y1*m*g/3, y2*m*g/3]
         ])
         self.M_inv = LA.pinv(M)
+
+        # Compute state feedback
+        z3 = np.zeros((3,3))
+        I3 = np.eye(3)
+        A = np.block([[z3, I3],[z3, z3]])
+        B = np.block([[z3],[I3]])
+        p = np.repeat([-3,-4], 3)
+        self.K_rot = control.place(A, B, p)
+
+        print(f"K_rot: {self.K_rot}")
+
     def acc_to_att(self, acc_des_b):
         # Compute desired roll/pitch from desired acceleration
         T_des = LA.norm(acc_des_b, axis=0) * self.m
@@ -315,6 +327,9 @@ class PID():
         return T_des, att_des
     
     def run(self, ref, x):
+        if not np.isfinite(x).all():
+            raise ValueError("State not finite")
+        
         m = 0.771
         g = 9.81
 
@@ -338,34 +353,46 @@ class PID():
         vel_err = vel_des - vel
         acc_des = velP * vel_err
 
-        # Convert acceleration to desired thrust vector (inertial frame)
-        acc_des_I = R @ acc_des - np.array([0, 0, m*g])
-        T_des = LA.norm(acc_des_I)
+        # # Convert acceleration to desired thrust vector (inertial frame)
+        # acc_des_I = R @ acc_des - np.array([0, 0, m*g])
+        # T_des = LA.norm(acc_des_I)
         
-        # Construct desired rotation matrix from thrust vector
-        x_des1 = np.array([cos(psi_des), sin(psi_des), 0.0])
-        z_des = -acc_des_I
-        y_des = np.cross(z_des, x_des1)
-        x_des = np.cross(y_des, z_des)
+        # # Construct desired rotation matrix from thrust vector
+        # x_des1 = np.array([cos(psi_des), sin(psi_des), 0.0])
+        # z_des = -acc_des_I
+        # y_des = np.cross(z_des, x_des1)
+        # x_des = np.cross(y_des, z_des)
 
-        R_des = np.stack([x_des, y_des, z_des], axis=1)
+        # R_des = np.stack([x_des, y_des, z_des], axis=1)
 
-        # SE(3) Error
-        # From Geometric Tracking Control of a Quadrotor UAV on SE(3)
-        pqr_des = np.array([0., 0., 0.])
-        e_R = 0.5 * veemap(R_des.T @ R - R.T @ R_des)
-        e_Om = pqr - R.T @ R_des @ pqr_des
+        # # SE(3) Error
+        # # From Geometric Tracking Control of a Quadrotor UAV on SE(3)
+        # pqr_des = np.array([0., 0., 0.])
+        # e_R = 0.5 * veemap(R_des.T @ R - R.T @ R_des)
+        # e_Om = pqr - R.T @ R_des @ pqr_des
 
-        kR = 1.0
-        kV = 0.2
-        M_des = kR * e_R + kV * e_Om + np.cross(pqr, self.J @ pqr)
-        # - self.J @ hatmap(pqr)@R.T@pqr_des # No pqr command
+        # kR = 10.0
+        # kV = 2.0
+        # M_des = kR * e_R + kV * e_Om + np.cross(pqr, self.J @ pqr)
+        # # - self.J @ hatmap(pqr)@R.T@pqr_des # No pqr command
+
+        acc_des_b = acc_des - R.T @ np.array([0,0,m*g])
+        T_des, eul_des = self.acc_to_att(acc_des_b)
+
+        eul = quat2eul(quat)
+        eul_err = eul_des - eul
+        pqr_err = -pqr
+
+        ang_acc_des = self.K_rot @ np.concatenate([eul_err, pqr_err])
+        LMN_des = self.J @ ang_acc_des + np.cross(pqr, self.J@pqr)
 
         # Convert TLMN into RPM
-        TLMN_des = np.concatenate([T_des.reshape(1), M_des], axis=0)
+        TLMN_des = np.concatenate([T_des.reshape(1), LMN_des], axis=0)
         u = self.M_inv @ TLMN_des
 
-        return u
+        dE = np.array([0.,0.])
+        # return np.concatenate([dE, u])
+        return np.concatenate([dE, TLMN_des])
 
     
 if __name__ == "__main__":
