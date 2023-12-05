@@ -1,6 +1,6 @@
 import numpy as np
 import numpy.linalg as LA
-from Utils import *
+from flightcontrol.Utils import *
 import matplotlib.pyplot as plt
 
 import math
@@ -20,14 +20,14 @@ class QuadVTOL:
 
     """
     def __init__(self):
-        self.n = 21
+        self.n = 16
         # Physical parameters
         self.g = 9.81 # [m/s^2]
         self.e3 = np.array([0.,0.,1.])
         self.mass = 0.771 # [kg]
         self.J = np.array([
             [0.0165,    0.0,    4.8e-5], 
-            [0.0,       0.0128, 0.0],
+            [0.0,       0.0128, 0.0   ],
             [4.8e-5,    0.0,    0.0282]
         ]) # [kg m^2]
         self.J_inv = LA.inv(self.J)
@@ -221,6 +221,11 @@ class QuadVTOL:
 
         # Control
         dE = u[0:2]
+        # rpm = u[2:5]
+        # tet_c = u[5:7]
+        rpm = np.array([0., 0., 0.])
+        tet_c = np.array([0., 0.])
+        TLMN = u[2:6]
 
         # Convert quaternion to rotation matrix
         R = quat2rotm(quat)
@@ -239,6 +244,9 @@ class QuadVTOL:
         """Rotor"""
         F_rotor, M_rotor = self.rotor_forces_and_moments(v_a, tet_r, rpm)
 
+        # DEBUG Use TLMN directly
+        M_rotor = TLMN[1:]
+        F_rotor = np.array([0., 0., -TLMN[0]])
 
         """Compute Derivatives"""
         # Position
@@ -278,11 +286,11 @@ class PID():
         ])
         x1,x2,x3 = rotor_pos[0]
         y1,y2,_ = rotor_pos[1]
-        m = 0.771
+        self.m = m = 0.771
         g = 9.81
         self.J = np.array([
             [0.0165,    0.0,    4.8e-5], 
-            [0.0,       0.0128, 0.0],
+            [0.0,       0.0128, 0.0   ],
             [4.8e-5,    0.0,    0.0282]
         ])
         M = np.array([
@@ -351,7 +359,7 @@ if __name__ == "__main__":
     dynamics = QuadVTOL()
 
     x0 = np.array([
-        0,0,0, 0,0,0, 1,0,0, 0,1,0, 0,0,1, 0,0,0, 0,0,0
+        0,0,0, 0,0,0, 1,0,0,0, 0,0,0, 0,0,0
     ])
     u = np.array([
         0,0, 1,1,1, 0,0,0
@@ -368,9 +376,6 @@ if __name__ == "__main__":
     print(f"Test dynamics \t| t:{t.shape}, y:{y.shape}")
 
     controller = PID()
-    x0 = np.array([
-        0,0,0, 0,0,0, 1,0,0, 0,1,0, 0,0,1, 0,0,0, 0,0,0
-    ])
     ref = np.array([2,0,0,0])
     u = controller.run(ref, x0)
 
