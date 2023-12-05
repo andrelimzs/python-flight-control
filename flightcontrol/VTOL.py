@@ -300,7 +300,20 @@ class PID():
             [ 0,   0,    0,  -y1*m*g/3, y2*m*g/3]
         ])
         self.M_inv = LA.pinv(M)
+    def acc_to_att(self, acc_des_b):
+        # Compute desired roll/pitch from desired acceleration
+        T_des = LA.norm(acc_des_b, axis=0) * self.m
+        # T_des = -acc_des_b[2,:].reshape(1,-1) * mass
+        
+        phi_des   =  np.arcsin(acc_des_b[1] / T_des)
+        theta_des = -atan2(acc_des_b[0], -acc_des_b[2])
+        psi_des   =  np.zeros(phi_des.shape)
 
+        # Form att desired vector
+        att_des = np.squeeze(np.stack([phi_des, theta_des, psi_des]))
+        
+        return T_des, att_des
+    
     def run(self, ref, x):
         m = 0.771
         g = 9.81
