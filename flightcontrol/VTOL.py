@@ -202,21 +202,22 @@ class QuadVTOL:
         If vectorized, shape is (n,k), otherwise it's (n,)
         For now, assumed not vectorized    
         """
-
-        dydt = np.zeros(self.n)
+        dydt = np.zeros_like(y)
 
         """Unpack"""
         # State
         pos = y[0:3]
         vel = y[3:6]
-        R = y[6:15].reshape(3,3)
-        pqr = y[15:18]
-        tet_r = y[18:21]
+        # R = y[6:15].reshape(3,3)
+        quat = y[6:10]
+        pqr = y[10:13]
+        tet_r = y[13:15]
 
         # Control
         dE = u[0:2]
-        rpm = u[2:5]
-        tet_c = u[5:8]
+
+        # Convert quaternion to rotation matrix
+        R = quat2rotm(quat)
         
         omega_skew = skew(pqr)
 
@@ -226,7 +227,8 @@ class QuadVTOL:
         F_aero, M_aero = self.aero_forces_and_moments(v_a, pqr, dE)
 
         """Rotor"""
-        F_rotor, M_rotor = self.rotor_forces_and_moments(v_a, tet_c, rpm)
+        F_rotor, M_rotor = self.rotor_forces_and_moments(v_a, tet_r, rpm)
+
 
         """Compute Derivatives"""
         # Position
@@ -236,13 +238,24 @@ class QuadVTOL:
         dydt[3:6] = omega_skew @ vel + self.g*R.T@self.e3 + (F_aero + F_rotor) / self.mass
 
         # Rotation
-        dydt[6:15] = (R @ omega_skew).ravel()
+        # dydt[6:15] = (R @ omega_skew).ravel()
+        w1, w2, w3 = pqr
+        Omega = np.block([
+            [0,  -w1, -w2, -w3],
+            [w1,  0,   w3, -w2],
+            [w2, -w3,  0,   w1],
+            [w3,  w2, -w1,  0 ]
+        ])
+        dydt[6:10] = 0.5 * Omega @ quat
+        # Quaternion renormalization gain
+        quat_K = 0.1
+        dydt[6:10] += quat_K * (np.ones_like(quat) - np.dot(quat,quat)) * quat
 
         # Body Rate
-        dydt[15:18] = -self.J_inv @ omega_skew @ self.J @ pqr + self.J_inv @ (M_aero + M_rotor)
+        dydt[10:13] = -self.J_inv@omega_skew@self.J@pqr + self.J_inv@(M_aero + M_rotor)
 
         # Tilt Servo
-        dydt[18:21] = self.k_tilt * (tet_c - tet_r)
+        dydt[13:15] = self.k_tilt * (tet_c - tet_r)
         
         return dydt
 
@@ -277,9 +290,13 @@ class PID():
         # Unpack state
         pos = x[0:3]
         vel = x[3:6]
-        R = x[6:15].reshape(3,3)
-        pqr = x[15:18]
-        tet_r = x[18:21]
+        # R = x[6:15].reshape(3,3)
+        quat = x[6:10]
+        pqr = x[10:13]
+        tet_r = x[13:15]
+
+        # Convert quaternion to rotation matrix
+        R = quat2rotm(quat)
 
         # Unpack reference
         vel_des = ref[0:3]
