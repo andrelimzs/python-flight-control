@@ -303,7 +303,9 @@ def quatInv(quat):
     return quatConjugate(quat) / LA.norm(quat)
 
 class PID():
-    def __init__(self):
+    def __init__(self, dt):
+        self.dt = dt
+
         rotor_pos = np.array([
             [0.1, 0.1, -0.22],
             [0.18, 0.18, 0],
@@ -326,6 +328,10 @@ class PID():
         ])
         self.M_inv = LA.pinv(M)
 
+        # Integrators
+        self.quat_err_int = np.zeros(3)
+        self.pqr_err_int = np.zeros(3)
+
         # Compute state feedback
         z3 = np.zeros((3,3))
         I3 = np.eye(3)
@@ -333,8 +339,6 @@ class PID():
         B = np.block([[z3],[I3]])
         p = np.repeat([-3,-4], 3)
         self.K_rot = control.place(A, B, p)
-
-        print(f"K_rot: {self.K_rot}")
 
     def acc_to_att(self, acc_des_b):
         # Compute desired roll/pitch from desired acceleration
@@ -380,23 +384,30 @@ class PID():
         vel_err = vel_des - vel
         acc_des = velP * vel_err
 
-        # # Convert acceleration to desired thrust vector (inertial frame)
-        # acc_des_I = R @ acc_des - np.array([0, 0, m*g])
-        # T_des = LA.norm(acc_des_I)
+        # Convert acceleration to desired thrust vector (inertial frame)
+        acc_des_I = R @ acc_des - np.array([0, 0, m*g])
+        T_des = LA.norm(acc_des_I)
         
-        # # Construct desired rotation matrix from thrust vector
-        # x_des1 = np.array([cos(psi_des), sin(psi_des), 0.0])
-        # z_des = -acc_des_I
-        # y_des = np.cross(z_des, x_des1)
-        # x_des = np.cross(y_des, z_des)
+        # Construct desired rotation matrix from thrust vector
+        x_des1 = np.array([cos(psi_des), sin(psi_des), 0.0])
+        z_des = -acc_des_I
+        y_des = np.cross(z_des, x_des1)
+        x_des = np.cross(y_des, z_des)
 
-        # R_des = np.stack([x_des, y_des, z_des], axis=1)
+        R_des = np.stack([x_des, y_des, z_des], axis=1)
 
-        # # SE(3) Error
-        # # From Geometric Tracking Control of a Quadrotor UAV on SE(3)
-        # pqr_des = np.array([0., 0., 0.])
-        # e_R = 0.5 * veemap(R_des.T @ R - R.T @ R_des)
-        # e_Om = pqr - R.T @ R_des @ pqr_des
+        """SE(3) Error"""
+        # Convert acceleration to desired thrust vector (inertial frame)
+        acc_des_I = R @ acc_des - np.array([0, 0, m*g])
+        T_des = LA.norm(acc_des_I)
+        
+        # Construct desired rotation matrix from thrust vector
+        x_des1 = np.array([cos(psi_des), sin(psi_des), 0.0])
+        z_des = -acc_des_I
+        y_des = np.cross(z_des, x_des1)
+        x_des = np.cross(y_des, z_des)
+
+        R_des = np.stack([x_des, y_des, z_des], axis=1)
 
         # kR = 10.0
         # kV = 2.0
