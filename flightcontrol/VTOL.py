@@ -3,6 +3,7 @@ import numpy.linalg as LA
 from flightcontrol.Utils import *
 import matplotlib.pyplot as plt
 import control
+from copy import deepcopy
 
 import math
 from math import atan2, asin, exp, sin, cos, pi
@@ -211,6 +212,8 @@ class QuadVTOL:
         
         dydt = np.zeros_like(y)
 
+        y = deepcopy(y)
+
         """Unpack"""
         # State
         pos = y[0:3]
@@ -332,6 +335,9 @@ class PID():
         
         m = 0.771
         g = 9.81
+
+        # [!] Deepcopy state to prevent overriding ODE solver solution
+        x = deepcopy(x)
 
         # Unpack state
         pos = x[0:3]
