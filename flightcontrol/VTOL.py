@@ -480,30 +480,3 @@ class PID():
         # return np.concatenate([dE, u])
         return np.concatenate([dE, TLMN_des]), (eul_des, pqr_des)
 
-    
-if __name__ == "__main__":
-    dynamics = QuadVTOL()
-
-    x0 = np.array([
-        0,0,0, 0,0,0, 1,0,0,0, 0,0,0, 0,0,0
-    ])
-    u = np.array([
-        0,0, 1,1,1, 0,0,0
-    ])
-    
-    sol = solve_ivp(
-        partial(dynamics, u=u),
-        t_span=[0,10],
-        y0=x0
-    )
-    t = sol.t
-    y = sol.y
-
-    print(f"Test dynamics \t| t:{t.shape}, y:{y.shape}")
-
-    controller = PID()
-    ref = np.array([2,0,0,0])
-    u = controller.run(ref, x0)
-
-    print(f"Test PID \t| u:{u.shape}")
-
