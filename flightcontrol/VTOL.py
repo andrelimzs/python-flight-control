@@ -409,13 +409,53 @@ class PID():
 
         R_des = np.stack([x_des, y_des, z_des], axis=1)
 
-        # kR = 10.0
-        # kV = 2.0
-        # M_des = kR * e_R + kV * e_Om + np.cross(pqr, self.J @ pqr)
-        # # - self.J @ hatmap(pqr)@R.T@pqr_des # No pqr command
+        """Rotation Matrix"""
+        if 0:
+            # From Geometric Tracking Control of a Quadrotor UAV on SE(3)
+            pqr_des = np.array([0., 0., 0.])
+            e_R = 0.5 * veemap(R_des.T @ R - R.T @ R_des)
+            e_Om = pqr - R.T @ R_des @ pqr_des
 
-        acc_des_b = acc_des - R.T @ np.array([0,0,m*g])
-        T_des, eul_des = self.acc_to_att(acc_des_b)
+            kR = 10.0
+            kV = 2.0
+            M_des = kR * e_R + kV * e_Om + np.cross(pqr, self.J @ pqr)
+            # - self.J @ hatmap(pqr)@R.T@pqr_des # No pqr command
+
+        """Quaternion Error"""
+        if 1:
+            quat_des = rotm2quat(R_des)
+            # # TEST Override ref cmd
+            # quat_des = eul2quat(np.array([0.0, -0.7, 0.0]))
+
+            # Attitude
+            # quat_err = quatKronecker(quat_des) @ quatConjugate(quat)
+            quat_err = quatKronecker(quatInv(quat)) @ quat_des
+            if quat_err[0] < 0:
+                quat_err *= -1
+            self.quat_err_int += self.dt * quat_err[1:4]
+
+            KP_quat = np.array([6.5, 6.5, 6.5]) * 1
+            KI_quat = np.array([6.5, 6.5, 6.5]) * 0
+            pqr_des = KP_quat * quat_err[1:4] + KI_quat * self.quat_err_int
+
+            # Clamp pqr_des
+            # Limit to 220 deg/s (PX4 limit)
+            pqr_des = pqr_des.clip(min=-3.8, max=3.8)
+
+            # Rate
+            pqr_err = pqr_des - pqr
+            self.pqr_err_int += self.dt * pqr_err
+            KP_pqr = np.array([0.15, 0.15, 0.15]) * 100
+            KI_pqr = np.array([0.2, 0.2, 0.2]) * 100
+            ang_acc_des = KP_pqr * pqr_err + KI_pqr * self.pqr_err_int
+
+            ang_acc_des = ang_acc_des.clip(min=-100, max=100)
+            
+            # Convert angular acceleration to torque
+            LMN_des = self.J @ ang_acc_des + np.cross(pqr, self.J@pqr)
+
+            # Logging
+            eul_des = quat2eul(quat_des)
 
         eul = quat2eul(quat)
         eul_err = eul_des - eul
