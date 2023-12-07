@@ -286,6 +286,22 @@ class QuadVTOL:
         
         return dydt
 
+def quatKronecker(quat):
+    q0,q1,q2,q3 = quat
+    return np.array([
+        [q0, -q1, -q2, -q3],
+        [q1,  q0, -q3,  q2],
+        [q2,  q3,  q0, -q1],
+        [q3, -q2,  q1,  q0]
+    ])
+
+def quatConjugate(quat):
+    quat[1:4] *= -1
+    return quat
+
+def quatInv(quat):
+    return quatConjugate(quat) / LA.norm(quat)
+
 class PID():
     def __init__(self):
         rotor_pos = np.array([
