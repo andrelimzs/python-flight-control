@@ -249,8 +249,13 @@ class QuadVTOL:
         F_rotor, M_rotor = self.rotor_forces_and_moments(v_a, tet_r, rpm)
 
         # DEBUG Use TLMN directly
-        M_rotor = TLMN[1:]
+        M_rotor = TLMN[1:4]
         F_rotor = np.array([0., 0., -TLMN[0]])
+
+        # DEBUG Disable aerodynamics
+        if 0:
+            F_aero *= 0
+            M_aero *= 0
 
         """Compute Derivatives"""
         # Position
@@ -260,7 +265,6 @@ class QuadVTOL:
         dydt[3:6] = omega_skew @ vel + self.g*R.T@self.e3 + (F_aero + F_rotor) / self.mass
 
         # Rotation
-        # dydt[6:15] = (R @ omega_skew).ravel()
         w1, w2, w3 = pqr
         Omega = np.block([
             [0,  -w1, -w2, -w3],
@@ -269,12 +273,13 @@ class QuadVTOL:
             [w3,  w2, -w1,  0 ]
         ])
         dydt[6:10] = 0.5 * Omega @ quat
+
         # Quaternion renormalization gain
         quat_K = 0.1
-        dydt[6:10] += quat_K * (np.ones_like(quat) - np.dot(quat,quat)) * quat
+        dydt[6:10] += quat_K * (1.0 - np.dot(quat,quat)) * quat
 
         # Body Rate
-        dydt[10:13] = -self.J_inv@omega_skew@self.J@pqr + self.J_inv@(M_aero + M_rotor)
+        dydt[10:13] = self.J_inv@(M_aero + M_rotor - omega_skew @ self.J @ pqr)
 
         # Tilt Servo
         dydt[13:15] = self.k_tilt * (tet_c - tet_r)
