@@ -5,13 +5,17 @@ from flightcontrol.VTOL import *
 from scipy.integrate import solve_ivp
 from functools import partial
 import math
+from time import sleep
 
 import matplotlib.pyplot as plt
 
 
 if __name__ == "__main__":
+    t_step = 1/100
+    t_span = np.arange(0, 10, t_step)
+
     dynamics = QuadVTOL()
-    controller = PID()
+    controller = PID(t_step)
 
     pos0 = np.array([0., 0., 0.])
     vel0 = np.array([0., 0., 0.])
@@ -23,59 +27,90 @@ if __name__ == "__main__":
     ])
     ref = np.array([2.0, 0.0, 0.0, 0.0])
     
-    t_step = 0.01
-    t_span = np.arange(0, 10, t_step)
-
     # Iterate through time
-    state = np.nan * np.ones((16, 1000))
-    control = np.nan * np.ones((6, 1000))
+    log_x = np.nan * np.ones((16, len(t_span)))
+    log_u = np.nan * np.ones((6, len(t_span)))
+    desired = np.nan * np.ones((6, len(t_span)))
     for i,t in enumerate(t_span):
         # Control
-        u = controller.run(ref, x)
-        
+        u, (eul_des, pqr_des) = controller.run(ref, x)
         # Simulate dynamics
         sol = solve_ivp(
-            partial(dynamics, u=u),
+            dynamics,
+            args=(u,),
             t_span=[t, t+t_step],
             t_eval=[t+t_step],
-            # method='Radau',
+            method="RK45",
             y0=x
         )
-        print(t, sol.status)
+        print(sol.t.item(), sol.status)
         x = sol.y[:,-1]
 
         # Log state
-        state[:,i] = sol.y[:,-1]
-        control[:,i] = u
+        log_x[:,i] = sol.y[:,-1]
+        desired[0:3,i] = eul_des
+        desired[3:6,i] = pqr_des
+        log_u[:,i] = u
     
     """Plot"""
     t = t_span
-    pos = state[0:3]
-    vel = state[3:6]
-    quat = state[6:10]
-    pqr = state[10:13]
-    tet_r = state[13:15]
+    pos = log_x[0:3]
+    vel = log_x[3:6]
+    quat = log_x[6:10]
+    pqr = log_x[10:13]
+    tet_r = log_x[13:15]
+    eul = quat2eul(quat)
 
-    dE = control[0:2]
-    # rpm = control[2:5]
-    # tet_c = control[5:7]
-    TLMN = control[2:6]
-    
+    dE = log_u[0:2]
+    # rpm = log_u[2:5]
+    # tet_c = log_u[5:7]
+    TLMN = log_u[2:6]
+
+    vel_des = np.repeat(ref[0:3, np.newaxis], len(t), axis=1)
+    eul_des = desired[0:3]
+    pqr_des = desired[3:6]
+
+
     fig, ax = plt.subplots(3, 1, sharey=True)
     [ ax[i].plot(t, vel[i]) for i in range(3) ]
+    [ ax[i].plot(t, vel_des[i]) for i in range(3) ]
     ax[0].set_title("Velocity")
     ax[0].set_ylabel("vx (m/s)")
     ax[1].set_ylabel("vy (m/s)")
     ax[2].set_ylabel("vz (m/s)")
     ax[2].set_xlabel("t (s)")
 
+    # Attitude
+    fig, ax = plt.subplots(3, 1, sharey=True)
+    [ ax[i].plot(t, eul[i]) for i in range(3) ]
+    [ ax[i].plot(t, eul_des[i]) for i in range(3) ]
+    ax[0].set_title("Euler Angles")
+    ax[0].set_ylabel("phi (rad)")
+    ax[1].set_ylabel("theta (rad)")
+    ax[2].set_ylabel("psi (rad)")
+    ax[2].set_xlabel("t (s)")
+
+    # Body Rate
     fig, ax = plt.subplots(3, 1, sharey=True)
     [ ax[i].plot(t, pqr[i]) for i in range(3) ]
+    [ ax[i].plot(t, pqr_des[i]) for i in range(3) ]
     ax[0].set_title("Body Rate")
-    ax[0].set_ylabel("p (m/s)")
-    ax[1].set_ylabel("q (m/s)")
-    ax[2].set_ylabel("r (m/s)")
+    ax[0].set_ylabel("p (rad/s)")
+    ax[1].set_ylabel("q (rad/s)")
+    ax[2].set_ylabel("r (rad/s)")
     ax[2].set_xlabel("t (s)")
+
+    # Quaternion
+    if 0:
+        fig, ax = plt.subplots(4, 1, sharey=True)
+        [ ax[i].plot(t, quat[i]) for i in range(4) ]
+        # [ ax[i].plot(t, eul_des[i]) for i in range(3) ]
+        ax[0].set_title("Quaternion")
+        ax[0].set_ylabel("w")
+        ax[1].set_ylabel("x")
+        ax[2].set_ylabel("y")
+        ax[3].set_ylabel("z")
+        ax[3].set_xlabel("t (s)")
 
     plt.show()
 
