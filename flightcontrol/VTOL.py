@@ -457,12 +457,20 @@ class PID():
             # Logging
             eul_des = quat2eul(quat_des)
 
-        eul = quat2eul(quat)
-        eul_err = eul_des - eul
-        pqr_err = -pqr
+        """Euler Error"""
+        if 0:
+            acc_des_b = acc_des - R.T @ np.array([0,0,m*g])
+            T_des, eul_des = self.acc_to_att(acc_des_b)
 
-        ang_acc_des = self.K_rot @ np.concatenate([eul_err, pqr_err])
-        LMN_des = self.J @ ang_acc_des + np.cross(pqr, self.J@pqr)
+            eul_des = np.array([0.0, -1.0, 0.0])
+            pqr_des = np.ones(3) * np.nan
+
+            eul = quat2eul(quat)
+            eul_err = eul_des - eul
+            pqr_err = -pqr
+
+            ang_acc_des = self.K_rot @ np.concatenate([eul_err, pqr_err])
+            LMN_des = self.J @ ang_acc_des + np.cross(pqr, self.J@pqr)
 
         # Convert TLMN into RPM
         TLMN_des = np.concatenate([T_des.reshape(1), LMN_des], axis=0)
@@ -470,7 +478,7 @@ class PID():
 
         dE = np.array([0.,0.])
         # return np.concatenate([dE, u])
-        return np.concatenate([dE, TLMN_des])
+        return np.concatenate([dE, TLMN_des]), (eul_des, pqr_des)
 
     
 if __name__ == "__main__":
